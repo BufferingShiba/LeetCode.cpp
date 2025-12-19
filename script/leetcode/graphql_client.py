@@ -243,8 +243,13 @@ class GraphQLClient:
         
         return CacheManager.get_or_compute(cache_key, fetch_design_problems)
     
-    def get_problem_by_id(self, problem_id: int) -> Dict[str, Any]:
-        """通过题目 ID 获取题目信息"""
+    def get_problem_by_id(self, problem_id: int, include_code_snippets: bool = False) -> Dict[str, Any]:
+        """通过题目 ID 获取题目信息
+        
+        Args:
+            problem_id: 题目 ID
+            include_code_snippets: 是否包含代码模板（默认 False）
+        """
         # 建立 ID -> slug 的映射缓存
         cache_key = "id_to_slug_map"
         
@@ -276,7 +281,7 @@ class GraphQLClient:
         if problem_id not in id_to_slug:
             raise ValueError(f"题目 ID {problem_id} 不存在")
         
-        return self.get_problem_by_slug(id_to_slug[problem_id])
+        return self.get_problem_by_slug(id_to_slug[problem_id], include_code_snippets=include_code_snippets)
     
     def is_design_problem(self, problem_id: int) -> bool:
         """判断题目是否是设计类题目（带缓存）
@@ -300,6 +305,53 @@ class GraphQLClient:
                 return False
         
         return problem_id in self._design_problem_ids_cache
+    
+    def get_daily_challenge(self) -> Dict[str, Any]:
+        """获取今日每日一题（带缓存，缓存1小时）"""
+        cache_key = "daily_challenge"
+        
+        def fetch_daily_challenge():
+            query = """
+            query {
+              activeDailyCodingChallengeQuestion {
+                date
+                userStatus
+                link
+                question {
+                  questionId
+                  questionFrontendId
+                  title
+                  titleSlug
+                  difficulty
+                  isPaidOnly
+                  topicTags {
+                    name
+                    slug
+                  }
+                  content
+                  codeSnippets {
+                    lang
+                    langSlug
+                    code
+                  }
+                }
+              }
+            }
+            """
+            
+            result = self.query(query)
+            
+            if "errors" in result:
+                raise ValueError(f"GraphQL 错误: {result['errors']}")
+            
+            daily = result.get("data", {}).get("activeDailyCodingChallengeQuestion")
+            if not daily:
+                raise ValueError("无法获取每日一题")
+            
+            return daily
+        
+        # 每日一题缓存1小时（3600秒）
+        return CacheManager.get_or_compute(cache_key, fetch_daily_challenge, expiry_seconds=3600)
     
     def clear_cache(self):
         """清除文件缓存"""

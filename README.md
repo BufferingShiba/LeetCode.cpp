@@ -4,6 +4,10 @@
 后续佛系更新，你可以查看 [已经解决的 LeetCode 题目](./SOLVED.md) ，代码注释可能会比较少，你可以使用 AI 辅助理解。
 By the way, 在 Vibe Coding 时代还有人需要刷算法题吗？🤨 好像架构和设计变得越来越重要了。
 
+... 我更新了一个 AI Solver，有 DeepSeek 的 API Key 的话可试试 `just ai-solve` 看看效果。
+
+真的越来越懒惰了 Orz
+
 ## ✨ 特性
 
 - 🎯 **一题多解**：使用策略模式实现多种解法，便于对比学习
@@ -27,7 +31,7 @@ By the way, 在 Vibe Coding 时代还有人需要刷算法题吗？🤨 好像�
 
 ## 🚀 快速开始
 
-### 安装依赖
+### 安装系统依赖
 
 ```bash
 sudo apt update

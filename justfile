@@ -5,6 +5,11 @@ set windows-powershell := true
 # Use python on Windows, python3 on Unix-like systems
 python := if os_family() == "windows" { "python" } else { "python3" }
 
+# Python virtual environment
+# 如果存在 venv，使用 venv 中的 python，否则使用系统 python
+# 使用 shell 命令检查文件是否存在
+python_venv := `test -f venv/bin/python && echo "venv/bin/python" || echo "{{python}}"`
+
 # 默认命令：显示帮助
 default:
     @echo "LeetCode.cpp 项目命令："
@@ -28,20 +33,27 @@ default:
     @echo ""
     @echo "代码格式化："
     @echo "  just format              - 格式化所有代码"
+    @echo ""
+    @echo "AI 自动解题："
+    @echo "  just ai-solve            - 使用 AI 解决每日一题"
+    @echo ""
+    @echo "Python 环境："
+    @echo "  just venv-setup          - 创建并设置虚拟环境"
+    @echo "  just venv-install        - 安装 Python 依赖"
 
 # LeetCode 题目管理
 leetcode +ARGS:
-    {{python}} script/leetcode/cli.py {{ARGS}}
+    {{python_venv}} script/leetcode/cli.py {{ARGS}}
 
 # 简化的题目管理命令
 add TARGET *ARGS:
-    {{python}} script/leetcode/cli.py add {{TARGET}} {{ARGS}}
+    {{python_venv}} script/leetcode/cli.py add {{TARGET}} {{ARGS}}
 
 rm TARGET:
-    {{python}} script/leetcode/cli.py rm {{TARGET}}
+    {{python_venv}} script/leetcode/cli.py rm {{TARGET}}
 
 doc:
-    {{python}} script/leetcode/cli.py doc
+    {{python_venv}} script/leetcode/cli.py doc
 
 # 构建项目
 build:
@@ -68,7 +80,7 @@ test ID="":
     @if [ -z "{{ID}}" ]; then \
         ./build/bin/problem_set_tests; \
     else \
-        {{python}} script/leetcode/cli.py test {{ID}}; \
+        {{python_venv}} script/leetcode/cli.py test {{ID}}; \
     fi
 
 test-filter FILTER:
@@ -81,3 +93,32 @@ test-filter FILTER:
 # 代码格式化
 format:
     @bash script/code-format.sh
+
+# AI 自动解题
+ai-solve *ARGS:
+    {{python_venv}} script/leetcode/ai_solver.py {{ARGS}}
+
+# Python 虚拟环境管理
+venv-setup:
+    @if [ -d "venv" ]; then \
+        echo "虚拟环境已存在"; \
+    else \
+        echo "创建虚拟环境..."; \
+        {{python}} -m venv venv; \
+        echo "✓ 虚拟环境已创建"; \
+        echo ""; \
+        echo "激活虚拟环境:"; \
+        echo "  source venv/bin/activate"; \
+        echo ""; \
+        echo "或使用 just venv-install 自动安装依赖"; \
+    fi
+
+venv-install:
+    @if [ ! -d "venv" ]; then \
+        echo "虚拟环境不存在，正在创建..."; \
+        {{python}} -m venv venv; \
+    fi
+    @echo "安装 Python 依赖..."
+    venv/bin/pip install --upgrade pip
+    venv/bin/pip install -r requirements.txt
+    @echo "✓ 依赖安装完成"

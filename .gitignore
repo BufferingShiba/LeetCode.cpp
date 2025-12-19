@@ -40,6 +40,14 @@ doxygenoutput/
 .leetcode-cache/
 __pycache__/
 
+# Python virtual environment
+venv/
+env/
+.venv/
+
+# Environment variables
+.env
+
 # Online Judge Test
 oj.out
 intput.txt
