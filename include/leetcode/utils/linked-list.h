@@ -37,7 +37,7 @@ ListNode* getTail(ListNode* head);
 
 class MyLinkedList {
  public:
-  MyLinkedList() : head(nullptr), tail(nullptr), dummy(0), size(0) {}
+  MyLinkedList() : head_(nullptr), tail_(nullptr), dummy_(0), size_(0) {}
 
   MyLinkedList(ListNode* head);
   ~MyLinkedList();
@@ -53,10 +53,10 @@ class MyLinkedList {
   void deleteAtIndex(int index);
 
  private:
-  ListNode* head = nullptr;
-  ListNode* tail = nullptr;
-  ListNode dummy;
-  int size = 0;
+  ListNode* head_ = nullptr;
+  ListNode* tail_ = nullptr;
+  ListNode dummy_;
+  int size_ = 0;
 
   ListNode* getNode(int index);
 };

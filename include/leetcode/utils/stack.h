@@ -17,8 +17,8 @@ class MyStack {
   bool empty();
 
  private:
-  std::queue<int> queueMain;
-  std::queue<int> queueAux;
+  std::queue<int> queue_main_;
+  std::queue<int> queue_aux_;
 };
 }  // namespace leetcode
 

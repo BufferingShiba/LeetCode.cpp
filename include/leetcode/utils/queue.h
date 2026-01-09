@@ -18,8 +18,8 @@ class MyQueue {
   bool empty();
 
  private:
-  std::stack<int> stackInput;
-  std::stack<int> stackOutput;
+  std::stack<int> stack_input_;
+  std::stack<int> stack_output_;
   void move();
 };
 

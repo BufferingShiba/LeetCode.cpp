@@ -85,27 +85,27 @@ ListNode* getTail(ListNode* head) {
 /* MyLinkedList */
 
 MyLinkedList::MyLinkedList(ListNode* head)
-    : head(head), tail(nullptr), dummy(0), size(0) {
+    : head_(head), tail_(nullptr), dummy_(0), size_(0) {
   ListNode* cur = head;
   while (cur) {
-    ++size;
-    tail = cur;
+    ++size_;
+    tail_ = cur;
     cur = cur->next;
   }
-  dummy.next = head;
+  dummy_.next = head_;
 }
 
 MyLinkedList::~MyLinkedList() {
-  while (head) {
-    ListNode* tmp = head;
-    head = head->next;
+  while (head_) {
+    ListNode* tmp = head_;
+    head_ = head_->next;
     delete tmp;
   }
 }
 
 ListNode* MyLinkedList::getNode(int index) {
-  dummy.next = head;
-  ListNode* cur = &dummy;
+  dummy_.next = head_;
+  ListNode* cur = &dummy_;
   for (int i = 0; i <= index; ++i) {
     cur = cur->next;
   }
@@ -113,59 +113,59 @@ ListNode* MyLinkedList::getNode(int index) {
 };
 
 int MyLinkedList::get(int index) {
-  if (index < 0 || index >= size) {
+  if (index < 0 || index >= size_) {
     return -1;
   }
   return getNode(index)->val;
 }
 
 void MyLinkedList::addAtHead(int val) {
-  head = new ListNode(val, head);
-  if (size++ == 0) {  // empty list before adding
-    tail = head;
+  head_ = new ListNode(val, head_);
+  if (size_++ == 0) {  // empty list before adding
+    tail_ = head_;
   }
 }
 
 void MyLinkedList::addAtTail(int val) {
-  if (size++ == 0) {  // empty list before adding
-    head = tail = new ListNode(val);
+  if (size_++ == 0) {  // empty list before adding
+    head_ = tail_ = new ListNode(val);
   } else {
-    tail->next = new ListNode(val);
-    tail = tail->next;
+    tail_->next = new ListNode(val);
+    tail_ = tail_->next;
   }
 }
 
 void MyLinkedList::addAtIndex(int index, int val) {
-  if (index < 0 || index > size) {
+  if (index < 0 || index > size_) {
     return;
   }
   if (index == 0) {
     addAtHead(val);
-  } else if (index == size) {
+  } else if (index == size_) {
     addAtTail(val);
   } else {
     ListNode* prev = getNode(index - 1);
     prev->next = new ListNode(val, prev->next);
-    ++size;
+    ++size_;
   }
 }
 
 void MyLinkedList::deleteAtIndex(int index) {
-  if (index < 0 || index >= size) {
+  if (index < 0 || index >= size_) {
     return;
   }
-  bool is_tail = (index == size - 1);  // 在 size 减1之前检查
+  bool is_tail = (index == size_ - 1);  // 在 size_ 减1之前检查
   ListNode* prev = getNode(index - 1);
   ListNode* del = prev->next;
   prev->next = del->next;
   delete del;
-  --size;
-  if (size == 0) {  // empty list after deleting
-    head = tail = nullptr;
+  --size_;
+  if (size_ == 0) {  // empty list after deleting
+    head_ = tail_ = nullptr;
   } else if (index == 0) {  // head node deleted
-    head = prev->next;
+    head_ = prev->next;
   } else if (is_tail) {  // tail node deleted
-    tail = prev;
+    tail_ = prev;
   }
 }
 

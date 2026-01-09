@@ -116,17 +116,17 @@ std::vector<int> levelOrderTraversal(TreeNode* root) {
     queue.push_back(root);
   }
   while (!queue.empty()) {
-    std::vector<TreeNode*> nextQueue;
+    std::vector<TreeNode*> next_queue;
     for (TreeNode* node : queue) {
       result.push_back(node->val);
       if (node->left) {
-        nextQueue.push_back(node->left);
+        next_queue.push_back(node->left);
       }
       if (node->right) {
-        nextQueue.push_back(node->right);
+        next_queue.push_back(node->right);
       }
     }
-    queue = nextQueue;
+    queue = next_queue;
   }
   return result;
 }
@@ -138,28 +138,28 @@ std::vector<std::vector<int>> levelOrder(TreeNode* root) {
     queue.push_back(root);
   }
   while (!queue.empty()) {
-    std::vector<int> levelNode;
-    std::vector<TreeNode*> nextQueue;
+    std::vector<int> level_node;
+    std::vector<TreeNode*> next_queue;
     for (TreeNode* node : queue) {
-      levelNode.push_back(node->val);
+      level_node.push_back(node->val);
       if (node->left) {
-        nextQueue.push_back(node->left);
+        next_queue.push_back(node->left);
       }
       if (node->right) {
-        nextQueue.push_back(node->right);
+        next_queue.push_back(node->right);
       }
     }
-    result.push_back(levelNode);
-    queue = nextQueue;
+    result.push_back(level_node);
+    queue = next_queue;
   }
   return result;
 }
 
 TreeNode* invertTree(TreeNode* root) {
   if (root) {
-    TreeNode* leftSubTree = root->left;
+    TreeNode* left_sub_tree = root->left;
     root->left = invertTree(root->right);
-    root->right = invertTree(leftSubTree);
+    root->right = invertTree(left_sub_tree);
   }
   return root;
 }

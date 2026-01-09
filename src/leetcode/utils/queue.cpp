@@ -4,29 +4,29 @@ namespace leetcode {
 MyQueue::MyQueue() {}
 
 void MyQueue::move() {
-  while (!stackInput.empty()) {
-    stackOutput.push(stackInput.top());
-    stackInput.pop();
+  while (!stack_input_.empty()) {
+    stack_output_.push(stack_input_.top());
+    stack_input_.pop();
   }
 }
 
-void MyQueue::push(int x) { stackInput.push(x); }
+void MyQueue::push(int x) { stack_input_.push(x); }
 
 int MyQueue::pop() {
-  if (stackOutput.empty()) {
+  if (stack_output_.empty()) {
     move();
   }
-  int top = stackOutput.top();
-  stackOutput.pop();
+  int top = stack_output_.top();
+  stack_output_.pop();
   return top;
 }
 
 int MyQueue::peek() {
-  if (stackOutput.empty()) {
+  if (stack_output_.empty()) {
     move();
   }
-  return stackOutput.top();
+  return stack_output_.top();
 }
 
-bool MyQueue::empty() { return stackInput.empty() && stackOutput.empty(); }
+bool MyQueue::empty() { return stack_input_.empty() && stack_output_.empty(); }
 }  // namespace leetcode
