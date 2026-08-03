@@ -1,7 +1,6 @@
 #include "leetcode/problems/minimum-area-rectangle-ii.h"
 
 #include <cmath>
-#include <limits>
 #include <unordered_map>
 #include <utility>
 
@@ -14,7 +13,8 @@ namespace {
 // A parallelogram with equal diagonals is a rectangle.
 double minAreaFreeRectImpl(std::vector<std::vector<int>>& points) {
   const int n = static_cast<int>(points.size());
-  double best = std::numeric_limits<double>::infinity();
+  double best = 0.0;
+  bool hasRectangle = false;
 
   // Key: (m1, m2, norm2) where m is the doubled midpoint (integers to stay
   // exact) and norm2 is the squared diagonal length (also doubled int-safe).
@@ -52,13 +52,16 @@ double minAreaFreeRectImpl(std::vector<std::vector<int>>& points) {
         const long long cross = dx * ey - dy * ex;
         if (cross == 0) continue;  // collinear diagonals, degenerate
         const double area = static_cast<double>(std::abs(cross)) / 2.0;
-        if (area < best) best = area;
+        if (!hasRectangle || area < best) {
+          best = area;
+          hasRectangle = true;
+        }
       }
       vec.emplace_back(dx, dy);
     }
   }
 
-  return std::isfinite(best) ? best : 0.0;
+  return best;
 }
 
 }  // namespace

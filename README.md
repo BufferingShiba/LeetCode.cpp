@@ -5,8 +5,7 @@
 By the way, 在 Vibe Coding 时代还有人需要刷算法题吗？🤨 好像架构和设计变得越来越重要了。
 
 我尽可能把这个项目变成一个现代化工程（真的能跑起来！不是代码集！），目前已经可以依赖 AI 大模型驱动自动更新题解，详情参考
-[ai-generated](https://github.com/0xMashiro/LeetCode.cpp/pulls?q=label%3Aai-generated) 标签
-与 [daily-challenge](./.github/workflows/daily-challenge.yml) 工作流。
+[ai-generated](https://github.com/0xMashiro/LeetCode.cpp/pulls?q=label%3Aai-generated) 标签；题目代码和测试均可在本地运行。
 
 真的越来越懒惰了 Orz
 
@@ -132,15 +131,6 @@ just cookie check
 脚本位置：
 - `script/ci/sync_leetcode_cookie.py`：读取浏览器 Cookie + 更新 Secret
 - `script/ci/check_leetcode_cookie.py`：校验 Cookie 有效性（GraphQL userStatus）
-
-### Cookie 过期 webhook 告警（可选）
-
-仓库内置工作流：`.github/workflows/leetcode-cookie-health.yml`，每天定时检查 `LEETCODE_COOKIE`。
-
-如需告警，请配置仓库 Secret：
-- `LEETCODE_COOKIE_ALERT_WEBHOOK_URL`：你的 webhook 地址（企业微信/飞书/Slack/自建服务）
-
-当 Cookie 失效时，工作流会自动向该地址发送告警消息。
 
 ### 调试代码
 
