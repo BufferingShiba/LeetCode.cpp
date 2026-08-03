@@ -85,6 +85,8 @@ SCAFFOLD_SOLVER_PROMPT = """Scaffold 模式补充：
   test，files 中也必须带上 source，不能只提交测试文件。
 - 调用工具前检查 source：不得残留 `/* Code here */`、默认 `return <type>();` 或 `solve()` 占位；
   source 的 solution1 和公开转发方法都要与 test 一起形成可运行闭环。
+- 只修一个 expected 或新增单个 SelfAuthored 用例时使用 append_test_case；create_or_update_file
+  的 test 内容必须是完整测试文件，不能提交孤立的 TEST_P 片段。
 """
 
 

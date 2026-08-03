@@ -37,6 +37,7 @@ class TestSystemPromptBuilder(unittest.TestCase):
         self.assertIn("Scaffold 模式补充", prompt)
         self.assertIn("不能只提交测试文件", prompt)
         self.assertIn("不得残留 `/* Code here */`", prompt)
+        self.assertIn("不能提交孤立的 TEST_P 片段", prompt)
 
     def test_multi_strategy_prompt_is_explicit_opt_in(self) -> None:
         normal = get_system_prompt("Hard")

@@ -98,6 +98,12 @@ class FileOps:
                     errors.append(f"文件已存在: {file_path}")
                     continue
 
+                if category == "test" and file_path.exists() and overwrite_existing:
+                    guard_error = _test_replacement_guard(file_path, content)
+                    if guard_error is not None:
+                        errors.append(guard_error)
+                        continue
+
                 pending.append((category, file_path, content))
 
             if errors:
@@ -249,6 +255,35 @@ class FileOps:
             )
         test_file["content"] = renamed_content
         return None
+
+
+def _test_replacement_guard(file_path: Path, replacement: str) -> Optional[str]:
+    """Reject a partial test snippet sent as a whole-file overwrite.
+
+    ``create_or_update_file`` is intentionally a whole-file operation. Models
+    sometimes try to fix one expected value by sending only a ``TEST_P`` block,
+    which silently destroys the fixture and strategy registration. If the
+    existing ordinary test has those structural markers, require the
+    replacement to retain them; small additions belong in ``append_test_case``.
+    Design tests without parameterized registration are left untouched.
+    """
+    try:
+        existing = file_path.read_text(encoding="utf-8")
+    except OSError as error:
+        return f"无法读取现有测试文件以保护覆盖操作: {error}"
+
+    required_markers = []
+    for marker in ("TEST_P(", "INSTANTIATE_TEST_SUITE_P("):
+        if marker in existing:
+            required_markers.append(marker)
+    missing = [marker for marker in required_markers if marker not in replacement]
+    if not missing:
+        return None
+    marker_text = "、".join(missing)
+    return (
+        f"拒绝用不完整内容覆盖 {file_path}：缺少 {marker_text}。"
+        "请提交完整 test 文件；若只需添加一个测试，请使用 append_test_case。"
+    )
 
 
 def _staged_initial(staged: Dict[str, str], missing: list) -> Dict[str, Any]:
