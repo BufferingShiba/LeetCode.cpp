@@ -28,6 +28,12 @@ TEST_P(LongestMountainInArrayTest, OfficialExample2) {
   EXPECT_EQ(0, solution.longestMountain(arr));
 }
 
+// ===== Regression: a descending run has no rising slope =====
+TEST_P(LongestMountainInArrayTest, StrictlyDecreasing) {
+  std::vector<int> arr = {9,8,7,6,5,4,3,2,1,0};
+  EXPECT_EQ(0, solution.longestMountain(arr));
+}
+
 
 INSTANTIATE_TEST_SUITE_P(
     LeetCode, LongestMountainInArrayTest,

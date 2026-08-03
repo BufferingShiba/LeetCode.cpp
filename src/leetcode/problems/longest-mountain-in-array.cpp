@@ -11,22 +11,24 @@ static int solution1(vector<int>& arr) {
   int ans = 0;
   int base = 0;
   while (base < n) {
-    int end = base;
-    // Walk up the rising slope.
-    while (end + 1 < n && arr[end] < arr[end + 1]) {
+    int peak = base;
+    while (peak + 1 < n && arr[peak] < arr[peak + 1]) {
+      ++peak;
+    }
+    // A descending run without an ascent is not a mountain.
+    if (peak == base) {
+      ++base;
+      continue;
+    }
+
+    int end = peak;
+    while (end + 1 < n && arr[end] > arr[end + 1]) {
       ++end;
     }
-    // `end` is now the peak candidate; only valid if there is a descent
-    // after it.
-    if (end + 1 < n && arr[end] > arr[end + 1]) {
-      while (end + 1 < n && arr[end] > arr[end + 1]) {
-        ++end;
-      }
+    if (end > peak) {
       ans = std::max(ans, end - base + 1);
-      base = end;  // restart scanning right after the descent.
-    } else {
-      base = std::max(base + 1, end);
     }
+    base = std::max(end, base + 1);
   }
   return ans;
 }
