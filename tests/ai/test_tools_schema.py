@@ -152,6 +152,34 @@ class TestToolResultSchema(unittest.TestCase):
         )
         self.assertTrue(result["is_successful"])
 
+    def test_scaffold_source_test_updates_default_to_overwrite(self) -> None:
+        executor = ToolExecutor(DummyRepository(), scaffold_mode=True)
+        with patch.object(
+            executor._files,
+            "create_or_update",
+            return_value={"is_successful": True, "status_message": "ok"},
+        ) as update:
+            result = executor.execute(
+                "create_or_update_file",
+                {
+                    "problem_id": 42,
+                    "files": [
+                        {"file_category": "source", "content": "source"},
+                        {"file_category": "test", "content": "test"},
+                    ],
+                },
+            )
+
+        update.assert_called_once_with(
+            problem_id=42,
+            files=[
+                {"file_category": "source", "content": "source"},
+                {"file_category": "test", "content": "test"},
+            ],
+            overwrite_existing=True,
+        )
+        self.assertTrue(result["is_successful"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -73,7 +73,7 @@ class AISolver:
 
         self._api_client = AIApiClient(self.provider, self.api_key, self.base_url)
         self.repository = repository or ProblemRepository()
-        self.tool_executor = ToolExecutor(self.repository)
+        self.tool_executor = ToolExecutor(self.repository, scaffold_mode=scaffold_mode)
         self.submission_classifier = SubmissionClassifier()
         self._leetcode_gate = LeetCodeGate(self.submission_classifier)
         self._report_generator = ReportGenerator(self._api_client.client, self.provider)

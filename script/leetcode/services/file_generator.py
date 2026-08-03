@@ -11,6 +11,7 @@ from script.leetcode.config import FileTypeConfig
 from script.leetcode.exceptions import FileOperationError
 from script.leetcode.models import DesignClassDefinition, FunctionSignature, ProblemInfo
 from script.leetcode.services.design_class_extractor import DesignClassExtractor
+from script.leetcode.services.naming import class_name_from_slug
 from script.leetcode.services.template_renderer import TemplateRenderer
 from script.leetcode.utils import ColorCode, color_text
 
@@ -33,8 +34,7 @@ class FileGenerator:
     @property
     def solution_class_name(self) -> str:
         """生成解决方案类名基础部分"""
-        words = self.problem_info.slug.split("-")
-        return "".join(word.capitalize() for word in words)
+        return class_name_from_slug(self.problem_info.slug)
     
     def _get_file_paths(self) -> Tuple[Path, Path, Path]:
         """获取三个文件的生成路径"""
@@ -101,22 +101,18 @@ class FileGenerator:
         header_path, source_path, test_path = self._get_file_paths()
         context = self._build_context()
         
+        # 先渲染全部内容，再开始写盘。模板错误不能留下只有 header 或 source
+        # 的半成品，否则随机解题的下一轮会把它误判为已有文件并污染工作区。
+        rendered = [
+            (header_path, TemplateRenderer.render('header', self.is_design, **context)),
+            (source_path, TemplateRenderer.render('source', self.is_design, **context)),
+            (test_path, TemplateRenderer.render('test', self.is_design, **context)),
+        ]
+
         generated = []
-        
-        # 生成头文件
-        content = TemplateRenderer.render('header', self.is_design, **context)
-        if self._write_file(header_path, content, force):
-            generated.append(header_path)
-        
-        # 生成源文件
-        content = TemplateRenderer.render('source', self.is_design, **context)
-        if self._write_file(source_path, content, force):
-            generated.append(source_path)
-        
-        # 生成测试文件
-        content = TemplateRenderer.render('test', self.is_design, **context)
-        if self._write_file(test_path, content, force):
-            generated.append(test_path)
+        for file_path, content in rendered:
+            if self._write_file(file_path, content, force):
+                generated.append(file_path)
         
         return generated
     

@@ -4,6 +4,8 @@
 
 from pathlib import Path
 
+from script.leetcode.services.naming import class_name_from_slug as _class_name_from_slug
+
 
 def read_file(path: Path) -> str:
     """安全读文件；不存在 / 权限失败返回空串。"""
@@ -15,4 +17,4 @@ def read_file(path: Path) -> str:
 
 def class_name_from_slug(slug: str) -> str:
     """`two-sum` → `TwoSum`。"""
-    return "".join(word.capitalize() for word in slug.split("-"))
+    return _class_name_from_slug(slug)

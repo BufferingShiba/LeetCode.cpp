@@ -214,8 +214,18 @@ class ScaffoldManager:
             log_with_time("⚠️ scaffold test 文件里没找到 INSTANTIATE_TEST_SUITE_P，跳过 example 注入", ColorCode.YELLOW)
             return
 
-        class_base = "".join(word.capitalize() for word in problem_info.slug.split("-"))
+        class_base = FileGenerator(problem_info).solution_class_name
         translations = self._translate(problem_data, class_base, official)
+
+        # 有官方 examples 时，用注入的完整测试替换模板兼容占位，避免
+        # Example1 空测试与 OfficialExample1 重复并误导模型。
+        content = re.sub(
+            rf"\n?TEST_P\({re.escape(class_base)}Test, Example1\)\s*\{{"
+            rf"\s*/\*Add Test Body here \*/\s*\}}\s*",
+            "\n",
+            content,
+            count=1,
+        )
 
         stubs = "\n".join(
             _render_stub(class_base, ex, body=translations.get(ex["index"]))

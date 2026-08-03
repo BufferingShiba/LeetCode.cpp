@@ -25,6 +25,8 @@ BASE_SOLVER_PROMPT = """你是 LeetCode.cpp 项目的 C++ 解题 agent。目标�
 - using Func = std::function<题目签名>; class XxxSolution : public SolutionBase<Func>。
 - source include "leetcode/problems/<slug>.h"；策略是 static 自由函数。
 - source/test 的 include 必须原样使用 metadata 返回的 slug（文件名是连字符，不要改成下划线或加题号）。
+- 由 slug 推导 C++ 类名时必须是合法标识符；若 slug 以数字开头，给类名和测试 fixture 加 `Problem` 前缀，
+  例如 `1-bit-and-2-bit-characters` 使用 `Problem1BitAnd2BitCharactersSolution/Test`。
 - source 的 include 只出现一个 `.h` 后缀；header 主要放 Func 和 Solution 类声明，若策略辅助函数只在
   source 定义，就把 registerStrategy/构造函数也放到 source，不能在 header 引用未声明的 source 符号。
 - 自由函数名必须与 Solution 类的公开方法名不同，例如公开方法为 `trimMean` 时使用

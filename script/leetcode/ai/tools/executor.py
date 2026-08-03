@@ -23,8 +23,9 @@ from script.leetcode.api import ProblemRepository
 
 
 class ToolExecutor:
-    def __init__(self, repository: ProblemRepository):
+    def __init__(self, repository: ProblemRepository, *, scaffold_mode: bool = False):
         self.repository = repository
+        self._scaffold_mode = scaffold_mode
         # MetadataFetcher 写 + FileOps 读的共享缓存；flash 盲目重 fetch 时由此返回
         # cached=True 的精简响应，避免浪费轮次。
         self._metadata_cache: Dict[int, Dict[str, Any]] = {}
@@ -62,6 +63,7 @@ class ToolExecutor:
                 normalized_arguments = _normalize_file_update_arguments(
                     normalized_arguments
                 )
+                _allow_scaffold_updates(normalized_arguments, self._scaffold_mode)
             if "problem_id" in normalized_arguments and normalized_arguments["problem_id"] is not None:
                 normalized_arguments["problem_id"] = int(normalized_arguments["problem_id"])
             raw = executor(**normalized_arguments)
@@ -75,6 +77,27 @@ class ToolExecutor:
                 },
                 tool_name=name,
             )
+
+
+def _allow_scaffold_updates(arguments: Dict[str, Any], scaffold_mode: bool) -> None:
+    """Avoid a wasted round when the model forgets overwrite on scaffold files.
+
+    Scaffold mode has just created the three files in this solver run. Only source/test
+    updates are normalized; header updates still require the model to opt in explicitly.
+    Normal (non-scaffold) runs retain the protective default of refusing overwrites.
+    """
+    if not scaffold_mode or arguments.get("overwrite_existing"):
+        return
+    files = arguments.get("files")
+    if not isinstance(files, list) or not files:
+        return
+    categories = {
+        entry.get("file_category")
+        for entry in files
+        if isinstance(entry, dict)
+    }
+    if categories and categories <= {"source", "test"}:
+        arguments["overwrite_existing"] = True
 
 
 def _normalize_file_update_arguments(arguments: Dict[str, Any]) -> Dict[str, Any]:
