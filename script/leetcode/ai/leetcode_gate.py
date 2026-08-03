@@ -6,6 +6,7 @@ from typing import Callable, Optional
 
 from script.leetcode.submit import feedback as leetcode_feedback
 from script.leetcode.submit.classifier import SubmissionClassifier
+from script.leetcode.submit.rate_limit import submission_rate_limit
 
 
 class LeetCodeGate:
@@ -22,10 +23,16 @@ class LeetCodeGate:
         self_authored_tests_locally_passed: Callable[[], bool],
     ) -> tuple[bool, Optional[bool], Optional[str], Optional[str]]:
         """Return (should_continue, accepted, feedback, skip_reason)."""
-        if verify_all_strategies:
-            outcome = self.classifier.submit_all_and_classify(problem_id)
-        else:
-            outcome = self.classifier.submit_and_classify(problem_id)
+        # Multiple isolated workers may solve locally at the same time, but all
+        # submissions still belong to one LeetCode account.  The lock is a
+        # no-op for the ordinary single-process CLI path.
+        with submission_rate_limit() as permit:
+            if verify_all_strategies:
+                outcome = self.classifier.submit_all_and_classify(problem_id)
+            else:
+                outcome = self.classifier.submit_and_classify(problem_id)
+            if getattr(outcome, "rate_limited", False):
+                permit.mark_rate_limited()
         if outcome.should_continue:
             return True, outcome.accepted, None, outcome.skip_reason
         if outcome.error_message:

@@ -11,6 +11,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
+from script.leetcode.submit.rate_limit import is_rate_limited_result
 from script.leetcode.utils import ColorCode, color_text, log_with_time
 
 
@@ -20,6 +21,7 @@ class SubmissionOutcome:
 
     `skip_reason` 仅在 accepted=None 时有值:
       * "no_cookie"   cookie 没配
+      * "rate_limited" 远端返回 429/503，已进入退避队列
       * "infra_error" 提交异常 / 非代码状态（过期、403、网络）
     """
     should_continue: bool
@@ -27,6 +29,7 @@ class SubmissionOutcome:
     result: Optional[Any] = None
     error_message: Optional[str] = None
     skip_reason: Optional[str] = None
+    rate_limited: bool = False
 
 
 class SubmissionClassifier:
@@ -119,6 +122,18 @@ class SubmissionClassifier:
             ).strip()
             return SubmissionOutcome(should_continue=False, accepted=False, result=r)
 
+        if any(is_rate_limited_result(r) for _, r, _ in mismatches):
+            log_with_time(
+                "⏸️ LeetCode 返回 429/503，本次提交进入共享退避队列",
+                ColorCode.YELLOW,
+            )
+            return SubmissionOutcome(
+                should_continue=True,
+                accepted=None,
+                skip_reason="rate_limited",
+                rate_limited=True,
+            )
+
         log_with_time(
             f"⚠️ 多策略提交全是非代码类失败: {summary}", ColorCode.YELLOW
         )
@@ -149,6 +164,17 @@ class SubmissionClassifier:
         if result.status in self.CODE_FAILURE_STATUSES:
             return SubmissionOutcome(
                 should_continue=False, accepted=False, result=result
+            )
+        if is_rate_limited_result(result):
+            log_with_time(
+                "⏸️ LeetCode 返回 429/503，本次提交进入共享退避队列",
+                ColorCode.YELLOW,
+            )
+            return SubmissionOutcome(
+                should_continue=True,
+                accepted=None,
+                skip_reason="rate_limited",
+                rate_limited=True,
             )
         infra_msg = result.error_message or result.status
         error_type = getattr(result, "error_type", None)

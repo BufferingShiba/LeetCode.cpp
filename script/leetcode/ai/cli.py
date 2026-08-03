@@ -42,7 +42,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--random-count",
         type=int,
         default=1,
-        help="配合 --random 使用，连续随机解题数量（默认 1；任一题失败即停止）",
+        help="配合 --random 使用，连续成功解题数量（默认 1；失败题目隔离后继续挑选）",
     )
     parser.add_argument("--auto", action="store_true", help="自动循环模式：持续解决未完成的题目")
     parser.add_argument("--difficulty", choices=["Easy", "Medium", "Hard"], help="配合 --random 使用")
@@ -94,6 +94,27 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--fail-streak-pause", type=int, default=60, help="自动模式连续失败暂停秒数（默认 60）"
     )
+    parser.add_argument(
+        "--max-problems",
+        type=int,
+        help="自动模式本次最多处理题目数；不传则持续运行直到题池耗尽",
+    )
+    parser.add_argument(
+        "--submit-delay",
+        type=int,
+        default=6,
+        help="自动模式在线提交成功后的节流等待秒数（默认 6）",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="自动模式并发 worker 数（默认 1；>1 时每题使用独立工作区）",
+    )
+    parser.add_argument(
+        "--metrics-dir",
+        help="自动模式批次 metrics 与 batch_results.jsonl 输出目录",
+    )
     return parser
 
 
@@ -144,6 +165,10 @@ def _run_auto(args: argparse.Namespace) -> None:
         api_key=args.api_key,
         base_url=args.base_url,
         require_leetcode=args.require_leetcode,
+        max_problems=args.max_problems,
+        submit_delay=args.submit_delay,
+        metrics_dir=args.metrics_dir,
+        workers=args.workers,
     )
     try:
         auto_solver.run()
@@ -160,16 +185,38 @@ def _solve_random(solver: AISolver, difficulty: str, count: int = 1) -> None:
         raise ValueError("--random-count 必须大于等于 1")
 
     pool = ProblemPool()
-    for index in range(count):
-        problem_id = pool.get_random(difficulty)
+    failed_ids: set[int] = set()
+    completed = 0
+    while completed < count:
+        problem_id = pool.get_random(difficulty, exclude_ids=failed_ids)
         if not problem_id:
             log_with_time("No unsolved problems found", ColorCode.YELLOW)
             return
         if count > 1:
-            log_with_time(f"🎲 Random run {index + 1}/{count}: selected problem {problem_id}", ColorCode.CYAN)
+            log_with_time(
+                f"🎲 Random run {completed + 1}/{count}: selected problem {problem_id}",
+                ColorCode.CYAN,
+            )
         else:
             log_with_time(f"🎲 Randomly selected problem: {problem_id}", ColorCode.CYAN)
-        solver.solve_problem(problem_id)
+
+        try:
+            solver.solve_problem(problem_id)
+        except Exception as exc:
+            failed_ids.add(problem_id)
+            pool.refresh()
+            log_with_time(
+                f"⚠️ 题目 {problem_id} 本轮失败，已隔离并继续随机挑选: {exc}",
+                ColorCode.YELLOW,
+            )
+            if count == 1:
+                raise
+            continue
+
+        completed += 1
+        # ProblemPool 在初始化时会快照已解决 slug；批量运行时刷新，避免下一轮
+        # 又从同一候选池选回刚完成的题目。
+        pool.refresh()
 
 
 if __name__ == "__main__":

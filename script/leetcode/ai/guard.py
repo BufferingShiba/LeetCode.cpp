@@ -24,7 +24,9 @@ class GuardState:
 
 def should_abort(tool_summary: Dict[str, Any], state: GuardState) -> bool:
     """判定是否应提前终止解题。"""
-    file_mutated = bool(tool_summary.get("file_mutated"))
+    file_mutated = bool(
+        tool_summary.get("file_mutated") or tool_summary.get("progress_made")
+    )
     error_signatures: List[str] = tool_summary.get("error_signatures", [])
 
     if file_mutated:

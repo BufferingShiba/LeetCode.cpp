@@ -74,6 +74,8 @@ def normalize(raw: Dict[str, Any], tool_name: str) -> Dict[str, Any]:
         result.setdefault("error_message", message)
 
     return result
+
+
 def compact(raw: Dict[str, Any]) -> Dict[str, Any]:
     """把 normalize 之后的结果再压一次，作为 tool-message content 回传模型。
 
@@ -104,7 +106,93 @@ def compact(raw: Dict[str, Any]) -> Dict[str, Any]:
         payload["output_excerpt"] = text
         payload.pop("output", None)
 
+    tool_name = str(payload.get("tool_name") or "")
+    if tool_name == "fetch_problem_metadata" and success:
+        payload = _compact_metadata(payload)
+    elif tool_name == "retrieve_file_content" and payload.get("content"):
+        # 文件内容是修复编译错误的有效上下文，但不应把一次误读的大文件
+        # 永久复制到每一轮请求中。需要时模型仍可再次 retrieve。
+        payload["content"] = _clip_text(str(payload["content"]), 16_000)
+
     return payload
+
+
+def _compact_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """保留解题所需元数据，去掉重复的 Two Sum/LRU 完整工程源码。
+
+    system prompt 已经给出最小架构模板；metadata 原先又携带两套完整示例
+    文件，单题每一轮都会重复计入 prompt，尤其容易把 Hard 题推过预算。
+    """
+    keep_fields = {
+        "is_successful",
+        "status",
+        "message",
+        "status_message",
+        "problem_id",
+        "title",
+        "slug",
+        "difficulty",
+        "url",
+        "cached",
+        "hint",
+        "examples",
+        "description",
+        "function_signature",
+        "code_template",
+        "is_design",
+        "solution_class_name",
+        "solution_class_base",
+        "test_class_name",
+        "namespace",
+        "framework_apis",
+        "tool_name",
+    }
+    compacted = {key: value for key, value in payload.items() if key in keep_fields}
+
+    if compacted.get("description"):
+        compacted["description"] = _clip_text(str(compacted["description"]), 9_000)
+    if compacted.get("code_template"):
+        compacted["code_template"] = _clip_text(str(compacted["code_template"]), 5_000)
+    if compacted.get("examples"):
+        compacted["examples"] = _compact_examples(compacted["examples"])
+    if compacted.get("framework_apis"):
+        compacted["framework_apis"] = {
+            str(name): _clip_text(str(source), 7_000)
+            for name, source in dict(compacted["framework_apis"]).items()
+        }
+
+    compacted["context_note"] = (
+        "已省略重复的 example_ordinary/example_design 完整文件；系统提示词已提供"
+        "项目模板，当前字段包含本题描述、签名、模板和必要 framework API。"
+    )
+    return compacted
+
+
+def _compact_examples(examples: Any) -> Any:
+    """裁剪异常冗长的 example 文本，同时保留所有官方 example 条目。"""
+    if not isinstance(examples, list):
+        return examples
+    compacted = []
+    for example in examples:
+        if not isinstance(example, dict):
+            compacted.append(example)
+            continue
+        item = dict(example)
+        for key, value in list(item.items()):
+            if isinstance(value, str):
+                item[key] = _clip_text(value, 1_500)
+        compacted.append(item)
+    return compacted
+
+
+def _clip_text(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    if max_chars < 80:
+        return text[:max_chars]
+    head = max_chars * 2 // 3
+    tail = max_chars - head
+    return f"{text[:head]}\n...[已压缩]...\n{text[-tail:]}"
 
 
 def truncate_output(output: str, max_chars: int = AIConfig.OUTPUT_EXCERPT_CHARS) -> str:

@@ -8,7 +8,7 @@ python := if os_family() == "windows" { "python" } else { "python3" }
 # Python virtual environment
 # 如果存在 venv，使用 venv 中的 python，否则使用系统 python
 # 使用 shell 命令检查文件是否存在
-python_venv := `test -f venv/bin/python && echo "venv/bin/python" || echo "{{python}}"`
+python_venv := `if test -f venv/bin/python; then echo "venv/bin/python"; else echo "python3"; fi`
 
 # 默认命令：显示帮助
 default:
@@ -49,6 +49,7 @@ default:
     @echo "  just submit <ID>         - 转换并提交到 LeetCode（默认最后一个 = 最优解）"
     @echo "  just submit <ID> -n 2    - 提交第 2 个 registerStrategy"
     @echo "  just submit <ID> --all   - 所有策略逐个翻译并提交（验证多解正确性，走缓存）"
+    @echo "  just submit-queue        - 按共享退避策略消费待提交队列"
     @echo "  just cookie check        - 检查 LEETCODE_COOKIE 是否有效"
     @echo "  just cookie update       - 一键同步浏览器 Cookie 到 GitHub Secret"
     @echo ""
@@ -107,7 +108,9 @@ single ID:
     echo "开始编译单题..."
     mkdir -p build
     cd build
-    cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLEETCODE_SINGLE_PROBLEM="$SLUG"
+    cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+        -ULEETCODE_MULTI_PROBLEMS -DLEETCODE_MULTI_PROBLEMS:STRING= \
+        -DLEETCODE_SINGLE_PROBLEM:STRING="$SLUG"
     cmake --build . -j
     echo ""
     echo "运行测试..."
@@ -145,7 +148,9 @@ multi *IDS:
     echo "共 $COUNT 个题目，开始编译..."
     mkdir -p build
     cd build
-    cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLEETCODE_MULTI_PROBLEMS="$SLUGS"
+    cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+        -ULEETCODE_SINGLE_PROBLEM -DLEETCODE_SINGLE_PROBLEM:STRING= \
+        -DLEETCODE_MULTI_PROBLEMS:STRING="$SLUGS"
     cmake --build . -j
     echo ""
     echo "运行测试..."
@@ -188,6 +193,9 @@ ai-solve *ARGS:
 # 提交到 LeetCode
 submit ID *ARGS:
     {{python_venv}} -m script.leetcode.submit {{ID}} {{ARGS}}
+
+submit-queue:
+    {{python_venv}} -m script.leetcode.submit --queue
 
 cookie ACTION *ARGS:
     #!/usr/bin/env bash

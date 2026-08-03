@@ -15,6 +15,7 @@ from contextlib import ExitStack, contextmanager
 from unittest.mock import patch
 
 from script.leetcode.ai.guard import GuardState, should_abort
+from script.leetcode.ai.journal import SolveJournal
 from script.leetcode.ai.solver import AISolver
 from script.leetcode.config import AIConfig
 
@@ -77,6 +78,16 @@ class TestGuardStateMachine(unittest.TestCase):
                 )
                 self.assertFalse(terminate, f"错误签名变化不应触发终止，当前 sig={sig}")
 
+    def test_staged_file_progress_resets_no_change_counter(self) -> None:
+        state = GuardState(no_file_change_rounds=3)
+        with _override(MAX_NO_FILE_CHANGE_ROUNDS=4):
+            terminate = should_abort(
+                {"file_mutated": False, "progress_made": True, "error_signatures": []},
+                state,
+            )
+        self.assertFalse(terminate)
+        self.assertEqual(state.no_file_change_rounds, 0)
+
 
 class TestBudgetGuard(unittest.TestCase):
     def test_budget_guard_allows_under_limit(self) -> None:
@@ -98,6 +109,27 @@ class TestBudgetGuard(unittest.TestCase):
         with patch.object(AIConfig, "MAX_TOTAL_TOKENS", 100):
             self.assertTrue(AISolver._budget_exhausted(state))
         self.assertEqual(recorded, ["token_budget_exhausted"])
+
+
+class TestPerProblemState(unittest.TestCase):
+    def test_reset_problem_run_does_not_carry_tokens_or_reasoning(self) -> None:
+        provider = types.SimpleNamespace(
+            name="deepseek",
+            model="deepseek-v4-flash",
+            use_reasoner=False,
+        )
+        state = types.SimpleNamespace(
+            provider=provider,
+            _journal=SolveJournal(provider),
+            reasoning_log=["previous problem"],
+        )
+        state._journal.add_usage(prompt_tokens=100, completion_tokens=50)
+
+        AISolver._reset_problem_run(state)
+
+        self.assertEqual(state._journal.metrics.total_tokens, 0)
+        self.assertEqual(state._journal.metrics.api_calls, 0)
+        self.assertEqual(state.reasoning_log, [])
 
 
 if __name__ == "__main__":

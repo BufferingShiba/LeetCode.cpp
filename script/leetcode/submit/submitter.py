@@ -17,11 +17,12 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from script.leetcode.api.repository import ProblemRepository
-from script.leetcode.config import AIProvider
+from script.leetcode.config import AIConfig, AIProvider
 from script.leetcode.cookie import prepare_cookie
 from script.leetcode.models import ProblemData
 from script.leetcode.submit import cache, expected_verdicts, http_api, translator
 from script.leetcode.submit.http_api import LeetCodeHttpClient
+from script.leetcode.submit.rate_limit import is_rate_limited_result, submission_rate_limit
 from script.leetcode.submit.result import SubmissionResult
 from script.leetcode.utils import ColorCode, color_text, log_with_time
 
@@ -59,7 +60,14 @@ class LeetCodeSubmitter:
         api_key = os.getenv(env_var) or os.getenv("AI_API_KEY")
         if not api_key:
             raise ValueError(f"请设置 {env_var} 或 AI_API_KEY")
-        self.ai_client = OpenAI(api_key=api_key, base_url=self.provider.base_url)
+        # Translation is part of the durable submission queue.  Give the SDK
+        # a hard socket timeout so one stalled conversion cannot hold the
+        # queue forever; the solver API client uses the same guard.
+        self.ai_client = OpenAI(
+            api_key=api_key,
+            base_url=self.provider.base_url,
+            timeout=AIConfig.STREAM_TIMEOUT_SECONDS,
+        )
         self.ai_model = self.provider.model
 
     # ---- public entries ----
@@ -89,7 +97,7 @@ class LeetCodeSubmitter:
             log_with_time("❌ 无法获取题目内部 ID", ColorCode.RED)
             return False
 
-        result = self._http.submit(problem_data.slug, question_id, code)
+        result = self._submit_http(problem_data.slug, question_id, code)
         return http_api.print_verdict(result)
 
     def submit_problem_with_result(self, problem_id: int, solution_num: int = 0) -> SubmissionResult:
@@ -117,7 +125,7 @@ class LeetCodeSubmitter:
             return SubmissionResult(
                 status="Error", status_code=-1, error_message="无法获取题目内部 ID",
             )
-        return self._http.submit(problem_data.slug, question_id, code)
+        return self._submit_http(problem_data.slug, question_id, code)
 
     def submit_all_solutions(
         self, problem_id: int, strategies: Optional[list] = None
@@ -126,7 +134,8 @@ class LeetCodeSubmitter:
 
         `strategies=None` 提交全部；列出则只交这些 1-indexed 索引。
         返回 `[(n, SubmissionResult, expected_status), ...]`。Compile Error 自动
-        失效翻译缓存重试一次；Error（疑似限流）等 15s 重试一次。
+        失效翻译缓存重试一次；明确的 429/503 不在当前进程内重试，而是交给
+        共享退避队列，避免把一次限流放大成连续请求。
         """
         try:
             problem_data = self.repo.get_detail_by_id(problem_id, include_code=True)
@@ -175,6 +184,20 @@ class LeetCodeSubmitter:
                 cache.invalidate(problem_data.slug, n, source_code)
                 time.sleep(6)
                 result = self.submit_problem_with_result(problem_id, n)
+                if is_rate_limited_result(result):
+                    log_with_time(
+                        "⏸️ 重试请求被远端限流，本轮停止后续策略，交给共享队列退避",
+                        ColorCode.YELLOW,
+                    )
+                    results.append((n, result, expected))
+                    break
+            elif result.status == "Error" and is_rate_limited_result(result):
+                log_with_time(
+                    "⏸️ 提交被远端限流，本轮停止后续策略，交给共享队列退避",
+                    ColorCode.YELLOW,
+                )
+                results.append((n, result, expected))
+                break
             elif result.status == "Error":
                 log_with_time("🔄 提交 Error（疑似限流）→ 等 15s 重试", ColorCode.YELLOW)
                 time.sleep(15)
@@ -183,6 +206,23 @@ class LeetCodeSubmitter:
         return results
 
     # ---- private helpers ----
+
+    def _submit_http(
+        self, slug: str, question_id: str, code: str
+    ) -> SubmissionResult:
+        """Submit through the shared scheduler (re-entrant under LeetCodeGate)."""
+        with submission_rate_limit() as permit:
+            if permit.deferred:
+                return SubmissionResult(
+                    status="Error",
+                    status_code=429,
+                    error_message="提交队列仍在冷却窗口，已延期到队列",
+                    error_type="rate_limited_deferred",
+                )
+            result = self._http.submit(slug, question_id, code)  # type: ignore[union-attr]
+            if is_rate_limited_result(result):
+                permit.mark_rate_limited(result.retry_after)
+            return result
 
     def _translate_local(self, problem_data: ProblemData, solution_num: int) -> Optional[str]:
         """读本地 header+source → 解析 solution_num → 走 translator.translate。"""

@@ -37,7 +37,15 @@ class AIApiClient:
     def __init__(self, provider: AIProvider, api_key: str, base_url: str):
         self.provider = provider
         self.use_reasoner = provider.use_reasoner
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        # The SDK's socket read timeout is the hard counterpart to
+        # `_consume_stream`'s idle-chunk guard.  Without it, a stalled HTTP
+        # read never returns control to `_consume_stream`, so a worker can
+        # remain blocked indefinitely despite STREAM_TIMEOUT_SECONDS.
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=AIConfig.STREAM_TIMEOUT_SECONDS,
+        )
 
     def call(
         self,

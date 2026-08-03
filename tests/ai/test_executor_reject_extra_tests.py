@@ -8,10 +8,9 @@
   测试用例"。kimi 多加了 SingleNode/Chain 两个自编用例。如果自编的 expected
   算错，solver 会一路"修代码去迎合错用例"，是个典型毒性失败模式。
 
-  这里在执行器层兜底：首次生成（三文件都不存在）时，统计 test 文件里的 TEST_P
-  条数，与已缓存 metadata 里的官方 examples 数量比较。只有明确超出才拒绝；
-  如果 metadata 还没拿到（模型跳过 fetch_problem_metadata 直接建文件，罕见
-  但不该硬挂），保守放过。
+  这里在执行器层兜底：首次生成（三文件都不存在）时，要求 metadata 已缓存，
+  并统计 test 文件里的 TEST_P 条数，确保至少覆盖全部官方 examples；超出部分
+  会由工具自动补上 SelfAuthored 前缀，不修改测试主体。
 """
 
 import tempfile
@@ -99,23 +98,22 @@ class TestRejectExtraTestsOnFirstGeneration(unittest.TestCase):
                     {"problem_id": 42, "files": files, "overwrite_existing": overwrite},
                 ), tmp
 
-    def test_reject_when_extra_test_lacks_self_authored_prefix(self) -> None:
-        """3 个 TEST_P 超出官方 2，第三个没 SelfAuthored 前缀 → 拒。"""
+    def test_auto_prefixes_extra_test_without_self_authored_prefix(self) -> None:
+        """3 个 TEST_P 超出官方 2，第三个名称由工具自动补前缀。"""
         executor = ToolExecutor(repository=_FakeRepo("x"))
         _prime_metadata_cache(executor, 42, example_count=2)
 
-        result, _ = self._run_with_tmp_paths(
-            executor,
-            files=[
-                {"file_category": "header", "content": "h"},
-                {"file_category": "source", "content": "s"},
-                {"file_category": "test", "content": _three_tests_with_extra()},
-            ],
+        files = [
+            {"file_category": "header", "content": "h"},
+            {"file_category": "source", "content": "s"},
+            {"file_category": "test", "content": _three_tests_with_extra()},
+        ]
+        self.assertIsNone(executor._files._check_extra_tests(42, files))
+        self.assertIn(
+            "TEST_P(XTest, SelfAuthoredEdgeCaseMadeUp)", files[2]["content"]
         )
-        self.assertFalse(result["is_successful"])
-        self.assertEqual(result.get("error_type"), "extra_test_cases_on_first_generation")
-        self.assertIn("SelfAuthored", result.get("error_message", ""))
-        self.assertIn("EdgeCaseMadeUp", result.get("error_message", ""))
+        result, _ = self._run_with_tmp_paths(executor, files=files)
+        self.assertTrue(result["is_successful"], msg=result.get("error_message"))
 
     def test_allow_extra_test_with_self_authored_prefix(self) -> None:
         """超出官方数量但命名是 SelfAuthored* → 放行（锚定风险由 leetcode_feedback 接管）。"""
@@ -146,9 +144,8 @@ class TestRejectExtraTestsOnFirstGeneration(unittest.TestCase):
         )
         self.assertTrue(result["is_successful"], msg=result.get("error_message"))
 
-    def test_allow_when_fewer_than_official(self) -> None:
-        """少于官方数量也放过（极端：模型只覆盖一个示例，自己选择保守）。
-        严格性由 prompt 约束；兜底只关心 "多写了编的"。"""
+    def test_reject_when_fewer_than_official(self) -> None:
+        """首次生成必须覆盖全部官方 examples，不能只靠 prompt 约束。"""
         executor = ToolExecutor(repository=_FakeRepo("x"))
         _prime_metadata_cache(executor, 42, example_count=2)
 
@@ -160,10 +157,11 @@ class TestRejectExtraTestsOnFirstGeneration(unittest.TestCase):
                 {"file_category": "test", "content": _only_one_test()},
             ],
         )
-        self.assertTrue(result["is_successful"])
+        self.assertFalse(result["is_successful"])
+        self.assertEqual(result.get("error_type"), "missing_official_test_cases")
 
-    def test_skip_check_when_metadata_not_cached(self) -> None:
-        """metadata 还没 fetch（理论上不该发生）→ 兜底保守放过，不要硬挂"""
+    def test_require_metadata_before_initial_files(self) -> None:
+        """首次生成前没有 metadata 时拒绝，避免官方 examples 校验失效。"""
         executor = ToolExecutor(repository=_FakeRepo("x"))
         # 故意不 prime cache
 
@@ -175,7 +173,10 @@ class TestRejectExtraTestsOnFirstGeneration(unittest.TestCase):
                 {"file_category": "test", "content": _three_tests_with_extra()},
             ],
         )
-        self.assertTrue(result["is_successful"])
+        self.assertFalse(result["is_successful"])
+        self.assertEqual(
+            result.get("error_type"), "metadata_required_before_initial_files"
+        )
 
     def test_overwrite_path_not_affected(self) -> None:
         """非首次生成（overwrite）允许任意测试数量，包括追加 LeetCode 失败用例。"""
@@ -207,8 +208,8 @@ class TestRejectExtraTestsOnFirstGeneration(unittest.TestCase):
                 )
         self.assertTrue(result["is_successful"])
 
-    def test_no_test_file_submitted_still_blocks_for_missing_initial(self) -> None:
-        """首次但没提交 test 文件 → 已有的 missing_initial_files 逻辑先拦下，不走 TEST_P 校验。"""
+    def test_no_test_file_submitted_is_staged_for_missing_initial(self) -> None:
+        """首次缺 test 时暂存 header/source，不提前写入不完整文件。"""
         executor = ToolExecutor(repository=_FakeRepo("x"))
         _prime_metadata_cache(executor, 42, example_count=2)
 
@@ -221,7 +222,55 @@ class TestRejectExtraTestsOnFirstGeneration(unittest.TestCase):
             ],
         )
         self.assertFalse(result["is_successful"])
-        self.assertEqual(result.get("error_type"), "missing_initial_files")
+        self.assertEqual(result.get("error_type"), "initial_files_staged")
+        self.assertEqual(result.get("missing_categories"), ["test"])
+
+    def test_stages_partial_files_until_all_categories_are_submitted(self) -> None:
+        """Flash 分多次提交时先暂存，三份齐全后才写入项目目录。"""
+        executor = ToolExecutor(repository=_FakeRepo("x"))
+        _prime_metadata_cache(executor, 42, example_count=2)
+
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            incl = tmp / "include"
+            src = tmp / "src"
+            tst = tmp / "test"
+            for directory in (incl, src, tst):
+                directory.mkdir(parents=True)
+            with patch("script.leetcode.ai.tools.file_ops.ProjectPaths") as paths:
+                paths.INCLUDE_PROBLEMS = str(incl)
+                paths.SRC_PROBLEMS = str(src)
+                paths.TEST_PROBLEMS = str(tst)
+
+                first = executor.execute(
+                    "create_or_update_file",
+                    {
+                        "problem_id": 42,
+                        "files": [
+                            {"file_category": "header", "content": "h"},
+                            {"file_category": "source", "content": "s"},
+                        ],
+                    },
+                )
+                self.assertFalse(first["is_successful"])
+                self.assertEqual(first.get("missing_categories"), ["test"])
+                self.assertFalse((incl / "x.h").exists())
+                self.assertFalse((src / "x.cpp").exists())
+
+                second = executor.execute(
+                    "create_or_update_file",
+                    {
+                        "problem_id": "42",
+                        "files": [
+                            {"file_category": "test", "content": _two_official_tests()},
+                        ],
+                    },
+                )
+
+            self.assertTrue(second["is_successful"], msg=second.get("error_message"))
+            self.assertEqual((incl / "x.h").read_text(encoding="utf-8"), "h")
+            self.assertEqual((src / "x.cpp").read_text(encoding="utf-8"), "s")
+            self.assertTrue((tst / "x.cpp").exists())
 
 
 if __name__ == "__main__":

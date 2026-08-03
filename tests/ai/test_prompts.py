@@ -14,6 +14,16 @@ class TestSystemPromptBuilder(unittest.TestCase):
         self.assertIn("首次 create_or_update_file", prompt)
         self.assertIn("默认只写一个最优 Accepted 策略", prompt)
         self.assertIn("SelfAuthored 测试必须满足题目约束", prompt)
+        self.assertIn("slug（文件名是连字符", prompt)
+        self.assertIn("source 的 include 只出现一个 `.h` 后缀", prompt)
+        self.assertIn("自由函数名必须与 Solution 类的公开方法名不同", prompt)
+        self.assertIn("SolutionBase` 的模板参数必须是精确签名的 `std::function", prompt)
+        self.assertIn("header 的 public 区域声明题目原方法", prompt)
+        self.assertIn("test 通过该公开方法调用", prompt)
+        self.assertIn("`<gtest/gtest.h>`", prompt)
+        self.assertIn("constructTree` 有多个重载", prompt)
+        self.assertIn("constructTree({1, 2, 3})", prompt)
+        self.assertIn("设计类题直接实现题目类，不使用 SolutionBase；但测试仍必须使用 `TEST_P`", prompt)
 
     def test_standard_prompt_adds_medium_hard_guidance(self) -> None:
         prompt = get_system_prompt("Hard")

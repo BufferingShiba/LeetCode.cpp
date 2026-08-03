@@ -9,10 +9,17 @@ from script.leetcode.submit.classifier import SubmissionClassifier
 
 
 class FakeResult:
-    def __init__(self, status: str, status_code: int, error_message: str | None = None):
+    def __init__(
+        self,
+        status: str,
+        status_code: int,
+        error_message: str | None = None,
+        error_type: str | None = None,
+    ):
         self.status = status
         self.status_code = status_code
         self.error_message = error_message
+        self.error_type = error_type
 
 
 class FakeSubmitter:
@@ -81,6 +88,20 @@ class TestSubmissionService(unittest.TestCase):
             outcome = service.submit_and_classify(1)
         self.assertTrue(outcome.should_continue)
         self.assertIsNone(outcome.result)
+
+    def test_http_429_is_classified_as_rate_limited(self) -> None:
+        service = SubmissionClassifier(
+            submitter_factory=lambda: FakeSubmitter(
+                result=FakeResult("Error", 429, "HTTP 429", "http_429")
+            )
+        )
+        with patch.dict(os.environ, {"LEETCODE_COOKIE": "dummy"}, clear=True):
+            outcome = service.submit_and_classify(1)
+
+        self.assertTrue(outcome.should_continue)
+        self.assertIsNone(outcome.accepted)
+        self.assertTrue(outcome.rate_limited)
+        self.assertEqual(outcome.skip_reason, "rate_limited")
 
 
 if __name__ == "__main__":

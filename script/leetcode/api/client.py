@@ -217,12 +217,29 @@ class GraphQLClient:
         include_code_snippets: bool = False
     ) -> ProblemData:
         """通过题目 ID 获取题目信息"""
+        # 模型工具调用有时会把 JSON schema 中的 integer 发成字符串；
+        # 在 API 边界统一归一化，避免 int key 的映射缓存命中失败。
+        problem_id = int(problem_id)
+
         # 使用 ID -> slug 映射缓存
         id_to_slug = self._get_id_to_slug_map()
         
+        # 映射缓存可能由旧版本按内部 questionId 生成；随机题池使用的是
+        # questionFrontendId。命中缓存后再核对一次返回对象的公开 ID，发现
+        # 缺失或错配就用当前 all_problems 重建。
+        slug = id_to_slug.get(problem_id)
+        if slug:
+            try:
+                problem = self.get_problem_by_slug(slug, include_code_snippets)
+                if problem.id == problem_id:
+                    return problem
+            except ProblemNotFoundError:
+                pass
+
+        id_to_slug = self._rebuild_id_to_slug_map()
         if problem_id not in id_to_slug:
             raise ProblemNotFoundError(str(problem_id))
-        
+
         return self.get_problem_by_slug(id_to_slug[problem_id], include_code_snippets)
     
     def _get_id_to_slug_map(self) -> Dict[int, str]:
@@ -242,6 +259,12 @@ class GraphQLClient:
             self._cache.save(cache_key, result)
         
         return result
+
+    def _rebuild_id_to_slug_map(self) -> Dict[int, str]:
+        """从当前题目列表重建公开题号到 slug 的映射。"""
+        mapping = {problem.id: problem.slug for problem in self.get_all_problems()}
+        self._cache.save("id_to_slug_map", mapping)
+        return mapping
     
     def is_design_problem(self, problem_id: int) -> bool:
         """判断题目是否是设计类题目"""

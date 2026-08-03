@@ -15,11 +15,11 @@ class TestAIProviderFromEnv(unittest.TestCase):
         self.assertEqual(provider.name, "moonshot")
         self.assertTrue(provider.use_reasoner)
 
-    def test_deepseek_default_thinking_enabled(self) -> None:
+    def test_deepseek_default_is_flash_with_thinking_enabled(self) -> None:
         with patch.dict(os.environ, {"AI_PROVIDER": "deepseek"}, clear=True):
             provider = AIProvider.from_env()
         self.assertEqual(provider.name, "deepseek")
-        self.assertEqual(provider.model, "deepseek-v4-pro")
+        self.assertEqual(provider.model, "deepseek-v4-flash")
         self.assertTrue(provider.use_reasoner)
 
     def test_deepseek_thinking_disabled(self) -> None:

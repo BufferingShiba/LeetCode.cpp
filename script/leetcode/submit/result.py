@@ -17,3 +17,4 @@ class SubmissionResult:
     memory_mb: Optional[float] = None
     error_message: Optional[str] = None
     error_type: Optional[str] = None
+    retry_after: Optional[float] = None

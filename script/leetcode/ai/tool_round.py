@@ -18,24 +18,58 @@ from script.leetcode.utils import ColorCode, color_text, log_with_time
 COMPILE_TOOLS = {"compile_project", "compile_and_test"}
 RUNTIME_FAILURE_TOOLS = {"compile_project", "compile_and_test", "execute_test_suite"}
 FILE_MUTATION_TOOLS = {"create_or_update_file", "append_test_case"}
+# These tools operate on the problem currently being solved.  Injecting the
+# solver's scoped id here keeps a missing/incorrect model argument from
+# turning into an avoidable extra conversation round.
+PROBLEM_SCOPED_TOOLS = {
+    "fetch_problem_metadata",
+    "create_or_update_file",
+    "retrieve_file_content",
+    "append_test_case",
+    "compile_project",
+    "compile_and_test",
+    "execute_test_suite",
+}
 
 
 def should_short_circuit(summary: Dict[str, Any]) -> bool:
-    """本轮工具里有成功的 compile_and_test → 可以跳到完成路径。"""
-    return bool(summary.get("compile_passed"))
+    """本轮最近一次验证覆盖了最近一次文件修改时，才允许走完成路径。"""
+    if not summary.get("compile_passed"):
+        return False
+
+    # 旧的、只在单测里构造的 summary 没有版本字段时，保持兼容。
+    mutation_version = summary.get("mutation_version")
+    passed_version = summary.get("compile_passed_version")
+    if mutation_version is None or passed_version is None:
+        return True
+    return passed_version >= mutation_version
 
 
-def update_summary(summary: Dict[str, Any], tool_name: str, result: Dict[str, Any]) -> None:
+def update_summary(
+    summary: Dict[str, Any],
+    tool_name: str,
+    result: Dict[str, Any],
+    *,
+    mutation_version: int | None = None,
+) -> None:
     """把单次工具结果反映到本轮摘要（file_mutated / error_signatures / compile_passed）。"""
     success = result_utils.is_success(result)
     if tool_name in COMPILE_TOOLS:
         summary["compile_called"] = True
+        if mutation_version is not None:
+            summary["compile_attempt_version"] = mutation_version
     if success and tool_name in FILE_MUTATION_TOOLS:
         summary["file_mutated"] = True
     if not success and tool_name in RUNTIME_FAILURE_TOOLS:
         summary["error_signatures"].append(result_utils.error_signature(tool_name, result))
-    if success and tool_name == "compile_and_test":
-        summary["compile_passed"] = True
+    if tool_name == "compile_and_test":
+        # 以最近一次 compile_and_test 为准，避免“先成功、后失败”仍被短路。
+        summary["compile_passed"] = success
+        if success:
+            if mutation_version is not None:
+                summary["compile_passed_version"] = mutation_version
+        else:
+            summary.pop("compile_passed_version", None)
 
 
 class ToolRoundProcessor:
@@ -57,7 +91,12 @@ class ToolRoundProcessor:
         problem_id: int,
         messages: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        summary: Dict[str, Any] = {"file_mutated": False, "error_signatures": []}
+        summary: Dict[str, Any] = {
+            "file_mutated": False,
+            "error_signatures": [],
+            "mutation_version": 0,
+            "compile_attempt_version": -1,
+        }
         for tc in tool_calls:
             self._run_one(tc, problem_id, messages, summary)
         return summary
@@ -81,7 +120,7 @@ class ToolRoundProcessor:
             self._append_error(tc, f"参数 JSON 解析失败: {e}", messages, summary)
             return
 
-        if tc.function_name in COMPILE_TOOLS and problem_id:
+        if tc.function_name in PROBLEM_SCOPED_TOOLS and problem_id:
             args["problem_id"] = problem_id
 
         try:
@@ -92,7 +131,21 @@ class ToolRoundProcessor:
 
         if self._update_compile_counter(tc.function_name, result):
             summary["compile_fix_exhausted"] = True
-        update_summary(summary, tc.function_name, result)
+
+        mutation_version = int(summary.get("mutation_version", 0))
+        if result_utils.is_success(result) and tc.function_name in FILE_MUTATION_TOOLS:
+            mutation_version += 1
+            summary["mutation_version"] = mutation_version
+        update_summary(
+            summary,
+            tc.function_name,
+            result,
+            mutation_version=mutation_version,
+        )
+        if result.get("error_type") == "initial_files_staged":
+            # 内容已在 executor 内存暂存，虽未落盘但属于有效进展；不触发编译，
+            # 允许模型下一轮补交缺失文件类别。
+            summary["progress_made"] = True
         _print_result(result)
         messages.append({
             "role": "tool",

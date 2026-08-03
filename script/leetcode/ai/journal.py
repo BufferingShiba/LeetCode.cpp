@@ -42,12 +42,15 @@ class ExperimentMetrics:
     success: bool = False
     leetcode_passed: Optional[bool] = None
     failure_reason: Optional[str] = None
-    # leetcode_passed=None 时的归因；"local_only" / "no_cookie" / "infra_error" / None
+    # leetcode_passed=None 时的归因；"local_only" / "no_cookie" /
+    # "rate_limited" / "infra_error" / None
     skip_reason: Optional[str] = None
     # 本次解题累计 token 用量（provider 返 usage 时逐轮相加）
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    context_compactions: int = 0
+    max_context_chars: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -95,6 +98,13 @@ class SolveJournal:
     def set_round(self, iteration_index: int) -> None:
         """iteration_index 是从 0 开始的计数，对外展示加 1。"""
         self._metrics.rounds = iteration_index + 1
+
+    def record_context_compaction(self, context_chars: int) -> None:
+        """记录上下文压缩次数和压缩前观察到的最大字符数。"""
+        self._metrics.context_compactions += 1
+        self._metrics.max_context_chars = max(
+            self._metrics.max_context_chars, int(context_chars)
+        )
 
     def set_solve_time(self, elapsed: float) -> None:
         self._metrics.total_solve_time = elapsed
@@ -158,6 +168,11 @@ class SolveJournal:
                 f"   Token 用量: prompt {m.prompt_tokens} + completion {m.completion_tokens} = {m.total_tokens}",
                 ColorCode.CYAN,
             )
+        if m.context_compactions > 0:
+            log_with_time(
+                f"   上下文压缩: {m.context_compactions} 次（峰值 {m.max_context_chars} 字符）",
+                ColorCode.CYAN,
+            )
         log_with_time(f"   LeetCode: {self._leetcode_summary_line()}", ColorCode.CYAN)
         if m.failure_reason:
             log_with_time(f"   失败原因: {m.failure_reason}", ColorCode.YELLOW)
@@ -166,6 +181,7 @@ class SolveJournal:
     _SKIP_HINTS = {
         "local_only": "⏭️  本地模式(require_leetcode=False,本地测试通过即完成)",
         "no_cookie": "⏭️  已跳过(LEETCODE_COOKIE 未配置)",
+        "rate_limited": "⏸️  LeetCode 限流，已进入退避队列，稍后再提交",
         "infra_error": "⚠️ 基础设施失败(cookie 过期 / 403 / 网络错误)",
     }
 

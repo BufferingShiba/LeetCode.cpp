@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from script.leetcode.api.client import GraphQLClient
 from script.leetcode.exceptions import APIError, NetworkError
+from script.leetcode.models import ProblemData
 
 
 class FakeResponse:
@@ -100,6 +101,37 @@ class TestGraphQLClientInternals(unittest.TestCase):
         self.assertEqual(mapping[2], "add-two-numbers")
         self.assertIn("id_to_slug_map", cache.saved)
         self.assertEqual(cache.saved["id_to_slug_map"], mapping)
+
+    def test_get_problem_by_id_rebuilds_stale_public_id_mapping(self) -> None:
+        client = GraphQLClient()
+        client._cache = FakeCache({"id_to_slug_map": {2188: "stale-slug"}})
+        stale = ProblemData(
+            question_id="2188",
+            question_frontend_id="2064",
+            title="stale",
+            title_slug="stale-slug",
+            difficulty="Medium",
+            is_paid_only=False,
+        )
+        current = ProblemData(
+            question_id="2295",
+            question_frontend_id="2188",
+            title="Minimum Time to Finish the Race",
+            title_slug="minimum-time-to-finish-the-race",
+            difficulty="Hard",
+            is_paid_only=False,
+        )
+
+        with patch.object(client, "get_problem_by_slug", side_effect=[stale, current]):
+            with patch.object(client, "get_all_problems", return_value=[current]):
+                result = client.get_problem_by_id("2188")
+
+        self.assertEqual(result.id, 2188)
+        self.assertEqual(result.slug, "minimum-time-to-finish-the-race")
+        self.assertEqual(
+            client._cache.saved["id_to_slug_map"],
+            {2188: "minimum-time-to-finish-the-race"},
+        )
 
 
 if __name__ == "__main__":

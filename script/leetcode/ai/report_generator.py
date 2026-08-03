@@ -8,6 +8,7 @@
   - 报告涉及的 LLM 调用、模板拼接、降级路径集中在此，便于单测与审计。
 """
 
+import time
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -41,6 +42,7 @@ class ReportGenerator:
         problem_tags: List[str],
         reasoning_log: List[str],
         is_skip: bool = False,
+        journal: Any = None,
     ) -> Path:
         """生成完整报告并写入 SOLUTION_REPORT_{problem_id}.md，返回目标路径。"""
         print()
@@ -49,7 +51,11 @@ class ReportGenerator:
         header = self._header(
             problem_id, problem_title, problem_slug, problem_difficulty, problem_tags
         )
-        content = SKIP_CONTENT if is_skip else self._generate_blog(reasoning_log)
+        content = (
+            SKIP_CONTENT
+            if is_skip
+            else self._generate_blog(reasoning_log, journal=journal)
+        )
 
         path = Path(REPORT_FILENAME_TEMPLATE.format(problem_id=problem_id))
         path.write_text(f"{header}\n{content}\n{FOOTER}", encoding="utf-8")
@@ -85,7 +91,7 @@ class ReportGenerator:
 
 """
 
-    def _generate_blog(self, reasoning_log: List[str]) -> str:
+    def _generate_blog(self, reasoning_log: List[str], *, journal: Any = None) -> str:
         """调 LLM 根据解题历史生成博客正文；失败时降级到静态文本。"""
         history = "\n".join(reasoning_log)
         user_prompt = (
@@ -112,9 +118,21 @@ class ReportGenerator:
         }
         params.update(report_provider.build_request_kwargs(allow_temperature=True))
 
+        started = time.time()
+        if journal is not None:
+            journal.increment_api_call()
         try:
             response = self.client.chat.completions.create(**params)
-            return response.choices[0].message.content
+            usage = getattr(response, "usage", None)
+            if journal is not None and usage is not None:
+                journal.add_usage(
+                    prompt_tokens=getattr(usage, "prompt_tokens", None),
+                    completion_tokens=getattr(usage, "completion_tokens", None),
+                )
+            return response.choices[0].message.content or BLOG_FALLBACK
         except Exception as e:
             print(color_text(f"⚠️ AI 博客生成失败: {e}，使用基础描述", ColorCode.YELLOW.value))
             return BLOG_FALLBACK
+        finally:
+            if journal is not None:
+                journal.add_api_time(time.time() - started)

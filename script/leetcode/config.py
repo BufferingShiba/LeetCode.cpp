@@ -51,7 +51,7 @@ class CacheConfig:
 class AIConfig:
     """AI 解题配置"""
     # 主解题循环最大轮数（包含代码生成、编译、本地测试）
-    MAX_ITERATIONS = int(os.getenv("AI_SOLVER_MAX_ITERATIONS", "12"))
+    MAX_ITERATIONS = int(os.getenv("AI_SOLVER_MAX_ITERATIONS", "16"))
 
     # LeetCode 提交相关配置
     LEETCODE_SUBMIT_MAX_RETRIES = 5  # LeetCode 提交失败后的最大重试次数
@@ -63,15 +63,20 @@ class AIConfig:
     COMPILE_AND_TEST_TIMEOUT = int(os.getenv("AI_SOLVER_COMPILE_AND_TEST_TIMEOUT", "90"))
 
     # 修复策略
-    MAX_COMPILE_FIX_ATTEMPTS = int(os.getenv("AI_SOLVER_MAX_COMPILE_FIX_ATTEMPTS", "3"))
+    MAX_COMPILE_FIX_ATTEMPTS = int(os.getenv("AI_SOLVER_MAX_COMPILE_FIX_ATTEMPTS", "4"))
     MAX_LEETCODE_FIX_ATTEMPTS = 3  # LeetCode 验证失败后的最大修复次数，超过则放弃
 
-    # 对话守卫策略（防止无效循环和成本失控）
-    # 随机批量解题必须快失败：如果单题已经烧掉大量 token 或迟迟没有通过本地验证，
-    # 继续补洞通常是在扩大成本而不是提高成功率。需要实验时可用 env 覆盖。
-    MAX_TOTAL_TOKENS = int(os.getenv("AI_SOLVER_MAX_TOTAL_TOKENS", "50000"))
+    # 对话守卫策略。默认值给 Hard 题留出更多修复空间；设为 0 可解除累计
+    # token 上限。上下文压缩会独立控制每次请求的历史长度，不依赖这个预算。
+    MAX_TOTAL_TOKENS = int(os.getenv("AI_SOLVER_MAX_TOTAL_TOKENS", "80000"))
     MAX_REPEAT_ERROR_SIGNATURE = 3  # 同类错误签名连续出现上限
-    MAX_NO_FILE_CHANGE_ROUNDS = int(os.getenv("AI_SOLVER_MAX_NO_FILE_CHANGE_ROUNDS", "4"))
+    MAX_NO_FILE_CHANGE_ROUNDS = int(os.getenv("AI_SOLVER_MAX_NO_FILE_CHANGE_ROUNDS", "5"))
+
+    # 请求上下文守卫：保留题目初始请求和最近工具反馈，旧推理用确定性摘要替代。
+    # 设为 0 可关闭上下文压缩（不建议在批量解题中关闭）。
+    MAX_CONTEXT_CHARS = int(os.getenv("AI_SOLVER_MAX_CONTEXT_CHARS", "48000"))
+    CONTEXT_KEEP_MESSAGES = int(os.getenv("AI_SOLVER_CONTEXT_KEEP_MESSAGES", "10"))
+    CONTEXT_SUMMARY_CHARS = int(os.getenv("AI_SOLVER_CONTEXT_SUMMARY_CHARS", "10000"))
 
     # 流式响应守卫
     STREAM_TIMEOUT_SECONDS = 60     # 多少秒无新 chunk 判定为超时
@@ -125,7 +130,8 @@ class AIProvider:
         return cls(
             name="deepseek",
             base_url="https://api.deepseek.com",
-            model=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro"),
+            # Flash is the project default; Pro must be selected explicitly.
+            model=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
             use_reasoner=os.getenv("DEEPSEEK_THINKING", "enabled").lower() == "enabled",
         )
 

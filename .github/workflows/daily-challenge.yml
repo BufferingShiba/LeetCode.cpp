@@ -67,13 +67,12 @@ jobs:
         env:
           AI_PROVIDER: deepseek
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_MODEL: deepseek-v4-pro
-          DEEPSEEK_THINKING: enabled
+          DEEPSEEK_MODEL: deepseek-v4-flash
+          DEEPSEEK_THINKING: disabled
           AI_SOLVER_GENERATE_REPORT: 'true'
           AI_SOLVER_METRICS_DIR: ai-metrics
           LEETCODE_COOKIE: ${{ secrets.LEETCODE_COOKIE }}
         run: |
-          # Fully automated path: only continue when LeetCode returns Accepted.
           source venv/bin/activate
           if [ -n "${{ github.event.inputs.problem_id }}" ]; then
             python -m script.leetcode.ai.solver ${{ github.event.inputs.problem_id }} --report --require-leetcode
@@ -86,12 +85,11 @@ jobs:
           source venv/bin/activate
           python - <<'PY'
           import json
-          import sys
           from pathlib import Path
 
           if Path("SKIP_PR").exists():
               print("SKIP_PR exists; no new solution needs LeetCode gate.")
-              sys.exit(0)
+              raise SystemExit(0)
 
           metrics = sorted(
               Path("ai-metrics").glob("metrics_*.json"),
@@ -133,7 +131,7 @@ jobs:
           echo "report_file=${REPORT_FILE:-}" >> $GITHUB_OUTPUT
           echo "has_solution=false" >> $GITHUB_OUTPUT
           
-          [ -z "$REPORT_FILE" ] && echo "No solution report found" && exit 0
+          [ -z "$REPORT_FILE" ] && echo "No solution report found" && exit 1
           
           echo "Found report: $REPORT_FILE (ID: $PROBLEM_ID)"
           
@@ -155,6 +153,7 @@ jobs:
             [ -z "$SOURCE_FILE" ] && echo "  - Missing source file"
             [ -z "$HEADER_FILE" ] && echo "  - Missing header file"
             [ -z "$TEST_FILE" ] && echo "  - Missing test file"
+            exit 1
           fi
       
       - name: Build and test solution

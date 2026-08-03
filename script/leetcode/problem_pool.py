@@ -16,6 +16,16 @@ class ProblemPool:
     
     CACHE_FILE = Path(".leetcode-cache/all_problems.json")
     UNSUPPORTED_CPP_FILE = Path(".leetcode-cache/unsupported_cpp.json")
+    # 这些题目依赖 SQL / Shell / 多线程或交互式评测协议，不适合当前
+    # C++ SolutionBase 自动生成链路。普通的 Design、Tree、Graph 等题型
+    # 仍保留，避免把可自动化的题目误判为“特殊题”。
+    SKIPPED_TOPIC_TAGS = frozenset({
+        "database",
+        "shell",
+        "concurrency",
+        "interactive",
+        "pandas",
+    })
     
     def __init__(self):
         self._all_problems: List[Dict[str, Any]] = []
@@ -29,14 +39,18 @@ class ProblemPool:
         if self.CACHE_FILE.exists():
             cache = json.loads(self.CACHE_FILE.read_text())
             self._all_problems = cache.get("data", [])
-        
-        # 2. 扫描已解决的题目
+
+        self.refresh()
+
+    def refresh(self) -> None:
+        """刷新本地解决状态，供同一进程内的批量随机解题使用。"""
+        # 题目缓存本身通常不会在解题过程中变化；解决文件状态会变化。
         src_dir = Path("src/leetcode/problems")
+        self._solved_slugs = set()
         if src_dir.exists():
             for f in src_dir.glob("*.cpp"):
                 self._solved_slugs.add(f.stem)
-        
-        # 3. 加载已知不支持 C++ 的题目
+
         self._unsupported_cpp_slugs = self._load_unsupported_cpp()
     
     def _load_unsupported_cpp(self) -> Set[str]:
@@ -99,7 +113,20 @@ class ProblemPool:
             if p.get("titleSlug") not in self._solved_slugs
             and p.get("titleSlug") not in self._unsupported_cpp_slugs  # 排除已知不支持 C++ 的
             and not p.get("isPaidOnly", False)  # 排除付费题
+            and not self._is_skipped_special_problem(p)
         ]
+
+    @classmethod
+    def _is_skipped_special_problem(cls, problem: Dict[str, Any]) -> bool:
+        """判断题目是否属于当前自动化链路主动跳过的特殊题型。"""
+        for tag in problem.get("topicTags") or []:
+            if isinstance(tag, dict):
+                tag_name = tag.get("name") or tag.get("slug") or ""
+            else:
+                tag_name = str(tag)
+            if str(tag_name).strip().lower() in cls.SKIPPED_TOPIC_TAGS:
+                return True
+        return False
     
     def get_random(
         self,
@@ -171,6 +198,13 @@ class ProblemPool:
         unsolved = self._get_unsolved()
         total_all = len(self._all_problems)
         total_solved = len(self._solved_slugs)
+        skipped_special = sum(
+            1
+            for problem in self._all_problems
+            if problem.get("titleSlug") not in self._solved_slugs
+            and not problem.get("isPaidOnly", False)
+            and self._is_skipped_special_problem(problem)
+        )
         
         by_difficulty = {"Easy": 0, "Medium": 0, "Hard": 0}
         for p in unsolved:
@@ -181,6 +215,7 @@ class ProblemPool:
             "total_in_cache": total_all,
             "total_solved": total_solved,
             "total_unsolved": len(unsolved),
+            "skipped_special": skipped_special,
             "by_difficulty": by_difficulty,
             "cache_file": str(self.CACHE_FILE),
             "cache_exists": self.CACHE_FILE.exists()
@@ -200,6 +235,7 @@ def main():
         print(f"Total problems: {stats['total_in_cache']}")
         print(f"Solved: {stats['total_solved']}")
         print(f"Unsolved: {stats['total_unsolved']}")
+        print(f"Skipped special types: {stats['skipped_special']}")
         print(f"By difficulty: {stats['by_difficulty']}")
     else:
         # 随机挑选一个

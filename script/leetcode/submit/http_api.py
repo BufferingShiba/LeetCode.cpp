@@ -11,6 +11,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 from typing import Dict, Optional, Tuple
 
 from script.leetcode.cookie import USER_AGENT as _USER_AGENT
@@ -117,7 +118,11 @@ class LeetCodeHttpClient:
         except urllib.error.HTTPError as e:
             error_type, message = _format_http_error(e)
             return SubmissionResult(
-                status="Error", status_code=e.code, error_message=message, error_type=error_type
+                status="Error",
+                status_code=e.code,
+                error_message=message,
+                error_type=error_type,
+                retry_after=_retry_after_seconds(e),
             )
         except urllib.error.URLError as e:
             return SubmissionResult(
@@ -153,13 +158,14 @@ class LeetCodeHttpClient:
                     print(f"\r[{ts}] ⏳ 判题中{'.' * dots}{' ' * (3 - dots)}", end="", flush=True)
                     time.sleep(1)
             except urllib.error.HTTPError as e:
-                if e.code in (401, 403, 429, 499):
+                if e.code in (401, 403, 429, 499, 503, 529):
                     error_type, message = _format_http_error(e)
                     return SubmissionResult(
                         status="Error",
                         status_code=e.code,
                         error_message=message,
                         error_type=error_type,
+                        retry_after=_retry_after_seconds(e),
                     )
                 time.sleep(1)
             except Exception:
@@ -203,6 +209,21 @@ def _format_http_error(error: urllib.error.HTTPError) -> Tuple[str, str]:
     except Exception:
         pass
     return f"http_{error.code}", f"HTTP {error.code}: {body}"
+
+
+def _retry_after_seconds(error: urllib.error.HTTPError) -> Optional[float]:
+    """Parse Retry-After without making it a requirement for backoff."""
+    value = error.headers.get("Retry-After") if error.headers else None
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        try:
+            target = parsedate_to_datetime(value)
+            return max(0.0, target.timestamp() - time.time())
+        except (TypeError, ValueError, OverflowError):
+            return None
 
 
 def print_verdict(result: SubmissionResult) -> bool:

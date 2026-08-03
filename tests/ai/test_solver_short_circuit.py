@@ -20,9 +20,15 @@ class TestShouldShortCircuit(unittest.TestCase):
         summary = {"file_mutated": True, "error_signatures": []}
         self.assertFalse(should_short_circuit(summary))
 
-    def test_no_short_circuit_when_compile_passed_but_file_not_mutated_yet(self) -> None:
-        summary = {"file_mutated": False, "error_signatures": [], "compile_passed": True}
-        self.assertTrue(should_short_circuit(summary))
+    def test_no_short_circuit_when_validation_is_stale(self) -> None:
+        summary = {
+            "file_mutated": True,
+            "error_signatures": [],
+            "compile_passed": True,
+            "mutation_version": 1,
+            "compile_passed_version": 0,
+        }
+        self.assertFalse(should_short_circuit(summary))
 
 
 class TestCompilePassedTracking(unittest.TestCase):
@@ -71,6 +77,69 @@ class TestCompilePassedTracking(unittest.TestCase):
             summary = processor.run(calls, problem_id=42, messages=[])
 
         self.assertTrue(summary.get("compile_fix_exhausted"))
+
+    def test_compile_before_mutation_does_not_validate_new_files(self) -> None:
+        from script.leetcode.ai.messages import ToolCall
+        from script.leetcode.ai.tool_round import ToolRoundProcessor, should_short_circuit
+
+        class _Executor:
+            def execute(self, name, args):
+                if name == "compile_and_test":
+                    return {"is_successful": True, "message": "old files passed"}
+                return {"is_successful": True, "message": "files updated"}
+
+        processor = ToolRoundProcessor(_Executor())
+        summary = processor.run(
+            [
+                ToolCall(
+                    id="call_1",
+                    type="function",
+                    function_name="compile_and_test",
+                    function_arguments="{}",
+                ),
+                ToolCall(
+                    id="call_2",
+                    type="function",
+                    function_name="create_or_update_file",
+                    function_arguments="{}",
+                ),
+            ],
+            problem_id=42,
+            messages=[],
+        )
+
+        self.assertFalse(should_short_circuit(summary))
+        self.assertEqual(summary.get("mutation_version"), 1)
+        self.assertEqual(summary.get("compile_passed_version"), 0)
+
+    def test_problem_id_is_injected_for_file_tools(self) -> None:
+        from script.leetcode.ai.messages import ToolCall
+        from script.leetcode.ai.tool_round import ToolRoundProcessor
+
+        class _Executor:
+            def __init__(self):
+                self.calls = []
+
+            def execute(self, name, args):
+                self.calls.append((name, args))
+                return {"is_successful": True, "message": "staged"}
+
+        executor = _Executor()
+        processor = ToolRoundProcessor(executor)
+        processor.run(
+            [
+                ToolCall(
+                    id="call_1",
+                    type="function",
+                    function_name="create_or_update_file",
+                    function_arguments='{"files": []}',
+                )
+            ],
+            problem_id=928,
+            messages=[],
+        )
+
+        assert executor.calls == [("create_or_update_file", {"files": [], "problem_id": 928})]
 
 
 if __name__ == "__main__":

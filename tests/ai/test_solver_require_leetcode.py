@@ -99,6 +99,7 @@ class TestHandleCompletionGating(unittest.TestCase):
             _submit_to_leetcode=submit,
             _journal=journal,
             _leetcode_fix_count=0,
+            _local_validation_passed=True,
             messages=[],
         )
 
@@ -109,6 +110,14 @@ class TestHandleCompletionGating(unittest.TestCase):
         state._submit_to_leetcode.assert_not_called()
         state._journal.set_leetcode_passed.assert_called_once_with(None)
         state._journal.set_skip_reason.assert_called_once_with("local_only")
+
+    def test_completion_requires_local_validation(self) -> None:
+        state = self._make_state(require_leetcode=False)
+        state._local_validation_passed = False
+        outcome = AISolver._handle_completion(state, iteration=0, round_start=0.0)
+        self.assertIsNone(outcome)
+        state._submit_to_leetcode.assert_not_called()
+        state._journal.set_leetcode_passed.assert_not_called()
 
     def test_require_leetcode_calls_submit(self) -> None:
         state = self._make_state(require_leetcode=True)

@@ -6,7 +6,9 @@
 `action_items` 修复提示。
 """
 
+import os
 import re
+import signal
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional
@@ -20,18 +22,18 @@ class BuildRunner:
     def compile_project(self, problem_id: Optional[int] = None) -> Dict[str, Any]:
         try:
             if problem_id:
-                result = subprocess.run(
+                result = _run_command(
                     ["just", "multi", str(problem_id)],
-                    capture_output=True, text=True, timeout=AIConfig.BUILD_TIMEOUT,
+                    timeout=AIConfig.BUILD_TIMEOUT,
                 )
             else:
                 from pathlib import Path
                 cmake_cache = Path("build/CMakeCache.txt")
                 if cmake_cache.exists():
                     cmake_cache.unlink()
-                result = subprocess.run(
+                result = _run_command(
                     ["just", "build"],
-                    capture_output=True, text=True, timeout=AIConfig.BUILD_TIMEOUT,
+                    timeout=AIConfig.BUILD_TIMEOUT,
                 )
 
             if result.returncode == 0:
@@ -54,15 +56,24 @@ class BuildRunner:
 
     def compile_and_test(self, problem_id: int) -> Dict[str, Any]:
         try:
-            result = subprocess.run(
+            result = _run_command(
                 ["just", "single", str(problem_id)],
-                capture_output=True, text=True,
                 timeout=AIConfig.COMPILE_AND_TEST_TIMEOUT,
             )
             output = result.stdout + result.stderr
             excerpt = result_utils.truncate_output(output)
 
             if result.returncode != 0:
+                # `just single` 把编译和 GTest 串在同一个进程里；非零退出码
+                # 不一定代表编译失败。先识别 GTest 输出，避免把断言失败
+                # 错误地喂给模型作为 C++ 编译错误。
+                if _looks_like_test_runner_output(output):
+                    analysis = analyze_test_failure(output)
+                    return _test_failure(
+                        analysis,
+                        excerpt,
+                        next_steps="修复失败用例后重新 compile_and_test。",
+                    )
                 analysis = classify_compilation_error(output)
                 return _compile_failure(analysis, excerpt, next_steps="修复代码后重新 compile_and_test。")
 
@@ -94,9 +105,9 @@ class BuildRunner:
 
     def execute_test_suite(self, problem_id: int) -> Dict[str, Any]:
         try:
-            result = subprocess.run(
+            result = _run_command(
                 [sys.executable, "-m", "script.leetcode.cli", "test", str(problem_id)],
-                capture_output=True, text=True, timeout=AIConfig.TEST_TIMEOUT,
+                timeout=AIConfig.TEST_TIMEOUT,
             )
             output = result.stdout + result.stderr
             excerpt = result_utils.truncate_output(output)
@@ -115,6 +126,51 @@ class BuildRunner:
             return _timeout("测试超时", "算法可能存在无限循环或时间复杂度过高，请检查循环条件和算法复杂度")
         except Exception as e:
             return {"is_successful": False, "error_message": str(e), "error_type": "exception"}
+
+
+def _run_command(command: List[str], *, timeout: int) -> subprocess.CompletedProcess:
+    """Run a command and clean up its complete process tree on timeout.
+
+    ``subprocess.run(timeout=...)`` terminates only the direct child.  The
+    project's ``just`` recipes launch a shell and then a test binary; an
+    infinite test could therefore keep stdout/stderr pipes open forever after
+    the shell was killed.  Starting a fresh process group lets a timeout reap
+    the shell and every descendant deterministically.
+    """
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=(os.name == "posix"),
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if os.name == "posix":
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        else:
+            process.kill()
+        # Reap the process and close all inherited pipes before propagating
+        # TimeoutExpired to the caller's existing timeout classifier.
+        process.communicate()
+        raise
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
+def _looks_like_test_runner_output(output: str) -> bool:
+    """判断合并输出是否已经进入 GoogleTest 阶段。"""
+    markers = (
+        "[==========]",
+        "[ RUN      ]",
+        "[       OK ]",
+        "[  FAILED  ]",
+        "test(s) failed",
+    )
+    return any(marker in output for marker in markers)
 
 
 def _compile_failure(analysis: Dict[str, Any], excerpt: str, *, next_steps: str) -> Dict[str, Any]:

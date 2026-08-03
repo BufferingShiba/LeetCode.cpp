@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """文件 CRUD 工具：`create_or_update_file` / `retrieve_file_content` / `append_test_case`。
 
-`create_or_update_file` 在首次生成时多做两道守卫：必须三文件齐全 +
-额外 TEST_P 必须 `SelfAuthored` 前缀——两条规则 JSON Schema 表达不了，
-只能在执行器层兜底。
+`create_or_update_file` 在首次生成时多做三道守卫：必须三文件齐全、必须先
+拿到 metadata 并覆盖全部官方 examples、额外 TEST_P 自动补上 `SelfAuthored` 前缀——
+这些规则 JSON Schema 表达不了，只能在执行器层兜底。
 """
 
 import re
@@ -29,6 +29,8 @@ class FileOps:
     def __init__(self, repository: Any, metadata_cache: Dict[int, Dict[str, Any]]):
         self._repo = repository
         self._cache = metadata_cache
+        # 首次生成时允许模型分多次提交，但只在三份文件齐全且校验通过后落盘。
+        self._initial_staging: Dict[int, Dict[str, str]] = {}
 
     def create_or_update(
         self,
@@ -41,17 +43,45 @@ class FileOps:
             paths = _category_paths(problem_info.slug)
 
             any_existing = any(p.exists() for p in paths.values())
-            submitted = {f.get("file_category") for f in files}
             if not any_existing:
-                missing = [c for c in _REQUIRED_CATEGORIES if c not in submitted]
+                staged = dict(self._initial_staging.get(problem_id, {}))
+                seen_categories = set()
+                for entry in files:
+                    category = entry.get("file_category")
+                    if category not in paths:
+                        return {
+                            "is_successful": False,
+                            "error_message": f"未知文件类型: {category}",
+                        }
+                    if category in seen_categories:
+                        return {
+                            "is_successful": False,
+                            "error_message": f"本次提交文件类型重复: {category}",
+                        }
+                    seen_categories.add(category)
+                    staged[category] = entry.get("content", "")
+
+                missing = [c for c in _REQUIRED_CATEGORIES if c not in staged]
                 if missing:
-                    return _missing_initial(missing)
+                    self._initial_staging[problem_id] = staged
+                    return _staged_initial(staged, missing)
+
+                files = [
+                    {"file_category": category, "content": staged[category]}
+                    for category in _REQUIRED_CATEGORIES
+                ]
                 extra_check = self._check_extra_tests(problem_id, files)
                 if extra_check is not None:
+                    self._initial_staging[problem_id] = staged
                     return extra_check
+                self._initial_staging.pop(problem_id, None)
+            else:
+                # 外部已经创建了文件，暂存内容不再代表当前磁盘状态。
+                self._initial_staging.pop(problem_id, None)
 
-            generated: List[Dict[str, str]] = []
             errors: List[str] = []
+            pending: List[tuple[str, Path, str]] = []
+            seen_categories = set()
 
             for entry in files:
                 category = entry["file_category"]
@@ -60,19 +90,30 @@ class FileOps:
                 if file_path is None:
                     errors.append(f"未知文件类型: {category}")
                     continue
+                if category in seen_categories:
+                    errors.append(f"文件类型重复提交: {category}")
+                    continue
+                seen_categories.add(category)
                 if file_path.exists() and not overwrite_existing:
                     errors.append(f"文件已存在: {file_path}")
                     continue
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-                file_path.write_text(content, encoding="utf-8")
-                generated.append({"file_category": category, "file_path": str(file_path)})
+
+                pending.append((category, file_path, content))
 
             if errors:
+                # 先完成所有输入校验，再写文件，避免 valid 文件已经落盘而
+                # 后续 entry 失败，留下一个看似存在但不完整的题目。
                 return {
                     "is_successful": False,
                     "error_message": "; ".join(errors),
-                    "generated_files": generated,
+                    "generated_files": [],
                 }
+
+            generated: List[Dict[str, str]] = []
+            for category, file_path, content in pending:
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_text(content, encoding="utf-8")
+                generated.append({"file_category": category, "file_path": str(file_path)})
 
             suffix = "（覆盖旧文件）" if overwrite_existing else ""
             return {
@@ -141,15 +182,28 @@ class FileOps:
             return {"is_successful": False, "error_message": str(e)}
 
     def _check_extra_tests(self, problem_id: int, files: list) -> Optional[Dict[str, Any]]:
-        """首次生成时兜底拦截未命名的自编 TEST_P。
+        """首次生成时校验官方 examples 数量并拦截未命名的自编 TEST_P。
 
-        官方 examples 以内的 TEST_P 放行任意命名；超出数量的必须 `SelfAuthored` 前缀，
-        否则拒——这条约束用于 leetcode_feedback 在 WA 时提醒模型"先核对 SelfAuthored
-        的 expected 是否算错"。metadata 还没缓存时保守放过。
+        必须先 fetch metadata，且 test 文件至少覆盖全部官方 examples；超出数量的
+        TEST_P 必须 `SelfAuthored` 前缀。这条约束用于在 LeetCode 返回 WA 时提醒模型
+        "先核对 SelfAuthored 的 expected 是否算错"；如果模型漏写前缀，工具只自动修正
+        测试名，不会修改测试内容。
         """
         cached = self._cache.get(problem_id)
         if not cached:
-            return None
+            return {
+                "is_successful": False,
+                "error_type": "metadata_required_before_initial_files",
+                "retryable": True,
+                "error_message": (
+                    "首次生成文件前必须先调用 fetch_problem_metadata，确保官方 examples "
+                    "已进入缓存；拿到 metadata 后再重新提交三份文件。"
+                ),
+                "next_steps": [
+                    "调用 fetch_problem_metadata",
+                    "重新调用 create_or_update_file 提交 header、source、test",
+                ],
+            }
         examples = cached.get("examples") or []
         expected_count = len(examples)
         if expected_count == 0:
@@ -161,42 +215,59 @@ class FileOps:
 
         test_content = test_file.get("content") or ""
         names = re.findall(r"\bTEST_P\s*\(\s*[^,]+,\s*([A-Za-z_][A-Za-z0-9_]*)", test_content)
-        if len(names) <= expected_count:
+        if len(names) < expected_count:
+            return {
+                "is_successful": False,
+                "error_type": "missing_official_test_cases",
+                "retryable": True,
+                "error_message": (
+                    f"test 文件只找到 {len(names)} 个 TEST_P，但题目有 {expected_count} 个官方 "
+                    "examples。请保留/补齐全部官方 Example 测试后重新提交。"
+                ),
+                "next_steps": [
+                    "为每个官方 example 添加一个 TEST_P",
+                    "重新调用 create_or_update_file 提交完整 test 文件",
+                ],
+            }
+
+        if len(names) == expected_count:
             return None
 
         bad = [n for n in names[expected_count:] if not n.startswith("SelfAuthored")]
         if not bad:
             return None
 
-        return {
-            "is_successful": False,
-            "error_type": "extra_test_cases_on_first_generation",
-            "retryable": True,
-            "error_message": (
-                f"首次生成时超出官方 examples 数（{expected_count}）的自编 TEST_P 必须以 "
-                f"`SelfAuthored` 开头，当前违规命名：{bad}。命名约束用于在 LeetCode 返回 WA 时"
-                "提醒你先核对自编 expected 是否算错（否则会把修复方向带偏）。"
-                "请改名（例如 SelfAuthoredEmptyInput、SelfAuthoredSingleNode）后重新提交。"
-            ),
-            "next_steps": [
-                "把违规命名改成 SelfAuthored 前缀（必须保留官方 ExampleN TEST_P）",
-                "重新调用 create_or_update_file 提交（overwrite_existing=true）",
-            ],
-        }
+        # 测试名称本身不影响算法和 expected。模型在批量运行中经常忘记给
+        # 自编 TEST_P 加前缀，若仅返回错误就会额外浪费一轮 API。安全地只
+        # 改写这些宏的第二个参数，保留测试主体、断言和官方样例不变。
+        renamed_content = test_content
+        for name in bad:
+            renamed_content = re.sub(
+                rf"(\bTEST_P\s*\(\s*[^,]+,\s*){re.escape(name)}\b",
+                rf"\1SelfAuthored{name}",
+                renamed_content,
+            )
+        test_file["content"] = renamed_content
+        return None
 
 
-def _missing_initial(missing: list) -> Dict[str, Any]:
+def _staged_initial(staged: Dict[str, str], missing: list) -> Dict[str, Any]:
+    staged_categories = [
+        category for category in _REQUIRED_CATEGORIES if category in staged
+    ]
     return {
         "is_successful": False,
-        "error_type": "missing_initial_files",
+        "error_type": "initial_files_staged",
         "retryable": True,
         "error_message": (
-            f"首次生成题目必须同时提交 header+source+test 三个文件，当前缺少: "
-            f"{', '.join(missing)}。请把三份完整内容合并到一次 create_or_update_file "
-            f"调用里（files 数组含 3 个条目）。"
+            f"已暂存 {', '.join(staged_categories) or '0 个文件'}（尚未写入项目目录），"
+            f"当前还缺少: {', '.join(missing)}。下一次 create_or_update_file 只需提交缺失类别；"
+            "三份齐全后系统会一次性完成首次写入。"
         ),
+        "staged_categories": staged_categories,
+        "missing_categories": missing,
         "next_steps": [
-            "在同一次 create_or_update_file 调用中提交 header、source、test 三份文件",
-            "参考 two-sum 的结构：header 声明类与函数签名，source 实现策略并调用 registerStrategy，test 使用 TestWithParam fixture 并以 INSTANTIATE_TEST_SUITE_P 结尾",
+            "提交缺失的文件类别，不要只重复提交已经暂存的类别",
+            "三份齐全后系统会检查官方 examples，再自动 compile_and_test",
         ],
     }

@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from script.leetcode.ai import result_utils, settings
 from script.leetcode.ai.api_client import AIApiClient
+from script.leetcode.ai.context import compact_messages, estimate_chars
 from script.leetcode.ai.guard import GuardState, should_abort
 from script.leetcode.ai.journal import SolveJournal
 from script.leetcode.ai.leetcode_gate import LeetCodeGate
@@ -95,6 +96,8 @@ class AISolver:
 
         self._leetcode_fix_count: int = 0
         self._guard = GuardState()
+        # 只有最近一次文件修改之后的 compile_and_test 成功，才允许完成。
+        self._local_validation_passed = False
 
     def _should_skip_as_already_solved(self, problem_id: int) -> bool:
         if self.force_new_solution:
@@ -108,6 +111,11 @@ class AISolver:
         self.problem_difficulty = context.difficulty
         self.problem_tags = context.tags
         self.is_daily = context.is_daily
+
+    def _reset_problem_run(self) -> None:
+        """隔离同一个 AISolver 实例连续解决的不同题目。"""
+        self._journal = SolveJournal(self.provider)
+        self.reasoning_log = []
 
     @property
     def tools(self) -> List[Dict[str, Any]]:
@@ -179,6 +187,7 @@ class AISolver:
     ) -> None:
         context = ProblemContext.from_question(problem_id, question, is_daily=is_daily)
         self._set_problem_context(context)
+        self._reset_problem_run()
 
         log_with_time(f"{context.title_prefix}: [{problem_id}] {context.title}", ColorCode.BLUE)
         log_with_time(f"🔗 URL: {context.url}", ColorCode.BLUE)
@@ -280,6 +289,7 @@ class AISolver:
         self._tool_round.reset()
         self._guard.reset()
         self._leetcode_fix_count = 0
+        self._local_validation_passed = False
 
     def _run_conversation_loop(self) -> bool:
         """主对话循环。返回 True 代表本地 + LeetCode 全过；False 代表守卫/API 失败或超轮。"""
@@ -349,6 +359,7 @@ class AISolver:
         log_with_time(f"🔄 第 {iteration + 1} 轮对话开始", ColorCode.YELLOW)
 
     def _safe_api_call(self) -> Optional[Message]:
+        self._compact_context_if_needed()
         try:
             message = self._api_client.call(
                 self.messages, self.tools,
@@ -374,6 +385,30 @@ class AISolver:
         self._journal.increment_api_call()
         return message
 
+    def _compact_context_if_needed(self) -> None:
+        """在每次请求前压缩旧历史，避免 prompt token 随轮次复利增长。"""
+        max_chars = getattr(AIConfig, "MAX_CONTEXT_CHARS", 0)
+        if max_chars <= 0 or not self.messages:
+            return
+
+        before = estimate_chars(self.messages)
+        compacted, dropped = compact_messages(
+            self.messages,
+            max_chars=max_chars,
+            keep_messages=getattr(AIConfig, "CONTEXT_KEEP_MESSAGES", 10),
+            summary_max_chars=getattr(AIConfig, "CONTEXT_SUMMARY_CHARS", 10_000),
+        )
+        if not dropped:
+            return
+
+        self.messages = compacted
+        self._journal.record_context_compaction(before)
+        after = estimate_chars(self.messages)
+        log_with_time(
+            f"🧹 压缩对话上下文: {before} → {after} 字符，移除 {dropped} 条旧消息",
+            ColorCode.CYAN,
+        )
+
     def _process_tool_round(
         self, tool_calls: List[ToolCall]
     ) -> tuple[bool, Dict[str, Any]]:
@@ -384,6 +419,8 @@ class AISolver:
             messages=self.messages,
         )
         self._auto_compile_after_mutation(tool_summary)
+        if tool_summary.get("file_mutated") or tool_summary.get("compile_called"):
+            self._local_validation_passed = should_short_circuit(tool_summary)
         log_with_time(f"🛠️  工具执行完成 ({time.time() - handle_start:.1f}s)", ColorCode.CYAN)
 
         if should_abort(tool_summary, self._guard):
@@ -403,14 +440,24 @@ class AISolver:
         """
         if not self.problem_id:
             return
-        if not tool_summary.get("file_mutated") or tool_summary.get("compile_called"):
+        if not tool_summary.get("file_mutated"):
+            return
+
+        mutation_version = int(tool_summary.get("mutation_version", 0))
+        compile_attempt_version = int(tool_summary.get("compile_attempt_version", -1))
+        if compile_attempt_version >= mutation_version:
             return
 
         log_with_time("🧪 文件已修改，自动执行 compile_and_test", ColorCode.CYAN)
         result = self.tool_executor.execute(
             "compile_and_test", {"problem_id": self.problem_id}
         )
-        update_summary(tool_summary, "compile_and_test", result)
+        update_summary(
+            tool_summary,
+            "compile_and_test",
+            result,
+            mutation_version=mutation_version,
+        )
         compact = result_utils.compact(result)
         self.messages.append({
             "role": "user",
@@ -494,6 +541,21 @@ class AISolver:
             })
             return None
 
+        if not getattr(self, "_local_validation_passed", False):
+            log_with_time(
+                "⚠️ 模型声称完成但最近一次文件修改尚未通过 compile_and_test，强制回炉",
+                ColorCode.YELLOW,
+            )
+            self.messages.append({
+                "role": "user",
+                "content": (
+                    "当前不能完成：必须先调用 create_or_update_file 或 append_test_case 提交最终文件，"
+                    "并等待系统自动执行 compile_and_test 且全部测试通过。"
+                    "不要只用文字宣布完成。"
+                ),
+            })
+            return None
+
         round_elapsed = time.time() - round_start
         log_with_time(f"✅ 第 {iteration + 1} 轮完成 ({round_elapsed:.1f}s)", ColorCode.GREEN)
         self._write_report()
@@ -572,6 +634,7 @@ class AISolver:
             problem_tags=self.problem_tags,
             reasoning_log=self.reasoning_log,
             is_skip=is_skip,
+            journal=self._journal,
         )
 
     def _submit_to_leetcode(
