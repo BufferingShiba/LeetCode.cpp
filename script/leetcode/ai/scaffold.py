@@ -208,13 +208,16 @@ class ScaffoldManager:
             log_with_time(f"⚠️ 读取 scaffold test 文件失败，跳过 example 注入: {e}", ColorCode.YELLOW)
             return
 
-        marker = "INSTANTIATE_TEST_SUITE_P"
-        insert_at = content.find(marker)
-        if insert_at < 0:
+        marker_match = re.search(r"(?m)^INSTANTIATE_TEST_SUITE_P\(", content)
+        if marker_match is None:
             log_with_time("⚠️ scaffold test 文件里没找到 INSTANTIATE_TEST_SUITE_P，跳过 example 注入", ColorCode.YELLOW)
             return
+        insert_at = marker_match.start()
 
         class_base = FileGenerator(problem_info).solution_class_name
+        if not _has_intact_parameterized_registration(content, class_base):
+            log_with_time("⚠️ scaffold 测试注册宏不完整，跳过 example 注入以保留可修复骨架", ColorCode.YELLOW)
+            return
         translations = self._translate(problem_data, class_base, official)
 
         # 有官方 examples 时，用注入的完整测试替换模板兼容占位，避免
@@ -231,7 +234,11 @@ class ScaffoldManager:
             _render_stub(class_base, ex, body=translations.get(ex["index"]))
             for ex in official
         )
-        test_path.write_text(content[:insert_at] + stubs + "\n\n" + content[insert_at:], encoding="utf-8")
+        new_content = content[:insert_at] + stubs + "\n\n" + content[insert_at:]
+        if not _has_intact_parameterized_registration(new_content, class_base):
+            log_with_time("⚠️ example 注入后测试注册宏校验失败，保留原 scaffold 文件", ColorCode.YELLOW)
+            return
+        test_path.write_text(new_content, encoding="utf-8")
 
         filled = sum(1 for ex in official if ex["index"] in translations)
         if filled == len(official):
@@ -271,6 +278,17 @@ def _read_file(path: Path) -> str:
         return path.read_text(encoding="utf-8")
     except Exception as e:
         return f"<读取失败: {e}>"
+
+
+def _has_intact_parameterized_registration(content: str, class_base: str) -> bool:
+    """确认官方 examples 注入不会破坏 TEST_P 的策略注册宏。"""
+    escaped = re.escape(class_base)
+    pattern = (
+        rf"INSTANTIATE_TEST_SUITE_P\(\s*"
+        rf"LeetCode\s*,\s*{escaped}Test\s*,\s*"
+        rf"::testing::ValuesIn\(\s*{escaped}Solution\(\)\.getStrategyNames\(\)\s*\)\s*\);"
+    )
+    return re.search(pattern, content, flags=re.DOTALL) is not None
 
 
 def _render_stub(class_base: str, example: Dict[str, Any], body: Optional[str] = None) -> str:

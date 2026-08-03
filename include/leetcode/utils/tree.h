@@ -41,10 +41,10 @@ std::vector<int> inorderTraversal(TreeNode* root);
 //! Left -> Right -> Root
 std::vector<int> postorderTraversal(TreeNode* root);
 
-//! Traverse a tree in level order, return a vector.
+//! Traverse a tree in level order, return a compact vector (null nodes omitted).
 std::vector<int> levelOrderTraversal(TreeNode* root);
 
-//! Traverse a tree in level order, return a vector of each level.
+//! Traverse a tree in level order, return a vector of each level (null nodes omitted).
 std::vector<std::vector<int>> levelOrder(TreeNode* root);
 
 //! invert a tree

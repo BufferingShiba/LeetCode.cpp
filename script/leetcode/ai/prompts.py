@@ -19,6 +19,8 @@ BASE_SOLVER_PROMPT = """你是 LeetCode.cpp 项目的 C++ 解题 agent。目标�
 - `constructTree` 有多个重载；调用时必须显式写 `std::vector<int>{...}` 或
   `std::vector<std::optional<int>>{...}`，禁止传裸 `{...}`（例如不能写
   `constructTree({1, 2, 3})`），避免重载歧义和错误构树。
+- `levelOrderTraversal` 和 `levelOrder` 返回紧凑结果：会跳过 null，不保留 `-1` 占位；
+  LeetCode 输出里的 null 不能原样放进 expected。
 
 普通题模板要点：
 - header include "leetcode/core.h"，namespace 为 leetcode::problem_{id}。
@@ -253,7 +255,7 @@ SolutionBase<Func> 公开 API 速查（照单抄，别发明新名字）：
 **重要**：`fetch_problem_metadata` 返回的 `framework_apis.solution_base` 字段就是 `solution.hpp` 的完整源码。不确定任何 API 行为时看原文，不要凭记忆。
 
 项目内置工具函数（涉及 TreeNode/ListNode 时优先用，别自己重写同名函数）：
-- **TreeNode**（tree.h）：`constructTree(vector<int>, -1 为 null)` / `constructTree(vector<optional<int>>)` / `preorderTraversal` / `inorderTraversal` / `postorderTraversal` / `levelOrderTraversal` / `levelOrder` / `invertTree` / `isSameTree` / `isBST` / `isBBST`；调用 `constructTree` 时必须显式标注 vector 类型，不能写 `constructTree({1, 2, 3})`
+- **TreeNode**（tree.h）：`constructTree(vector<int>, -1 为 null)` / `constructTree(vector<optional<int>>)` / `preorderTraversal` / `inorderTraversal` / `postorderTraversal` / `levelOrderTraversal` / `levelOrder` / `invertTree` / `isSameTree` / `isBST` / `isBBST`；`levelOrderTraversal` 和 `levelOrder` 都会跳过 null、不保留 `-1` 占位；调用 `constructTree` 时必须显式标注 vector 类型，不能写 `constructTree({1, 2, 3})`
 - **ListNode**（linked-list.h）：`constructLinkedList(vector<int>)` / `traverse` / `reverseList` / `removeElements` / `getNode` / `getTail`
 - 完整头文件在 `framework_apis.tree_utils` / `framework_apis.linked_list_utils`（按题目需要自动提供）
 

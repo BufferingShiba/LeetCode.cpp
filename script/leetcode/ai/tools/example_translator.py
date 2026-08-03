@@ -32,7 +32,8 @@ _UTILITY_HINT = """项目已经提供的辅助函数(遇到对应类型优先用
 - `leetcode::constructTree(vector<int>)`:把 LeetCode 层序 + -1 代表 null 的数组构造成 `TreeNode*`
 - `leetcode::constructLinkedList(vector<int>)`:构造 `ListNode*`
 - `leetcode::traverse(ListNode*)` → `vector<int>`:把链表还原成 vector 方便 EXPECT_EQ 比较
-- `leetcode::preorderTraversal / inorderTraversal / postorderTraversal / levelOrderTraversal`:TreeNode 遍历成 vector
+- `leetcode::preorderTraversal / inorderTraversal / postorderTraversal / levelOrderTraversal`:TreeNode 遍历成 vector；其中 `levelOrderTraversal` 返回紧凑层序结果，跳过 null，不保留 `-1` 占位
+- `leetcode::levelOrder`:按层返回紧凑结果，同样跳过 null，不要把 LeetCode 输出里的 null 原样放进 expected
 
 LeetCode 用 `null` 表示树空节点,在 C++ 构造函数里用 `-1` 占位。
 LeetCode 数组字面量 `[1,2,3]` 对应 C++ `{1, 2, 3}` 列表初始化。
@@ -44,6 +45,9 @@ ListNode* 返回值需要先 `traverse(result)` 再和期望的 vector<int> 比�
 """
 
 _UNTRANSLATABLE = "UNTRANSLATABLE"
+_STRUCTURAL_BODY_RE = re.compile(
+    r"(?m)^\s*(?:#\s*include\b|namespace\b|TEST_P\s*\(|INSTANTIATE_TEST_SUITE_P\s*\()"
+)
 
 _SYSTEM_PROMPT = """你是 LeetCode 题面 example → C++ Google Test body 的翻译器。
 你只做一件事:根据给定的 function signature 和官方 example 的 Input/Output,生成一段
@@ -189,7 +193,9 @@ def _parse_llm_output(text: str, expected_indices: set) -> Dict[int, str]:
             continue
         # 清理常见污染:前后空行、markdown 代码围栏
         cleaned = _strip_code_fence(value).rstrip() + "\n"
-        if cleaned.strip():
+        # body 会被嵌入既有 TEST_P；若模型返回完整文件/测试包装器，
+        # 直接丢弃该 example，保留 scaffold TODO，避免破坏 fixture 和注册宏。
+        if cleaned.strip() and not _STRUCTURAL_BODY_RE.search(cleaned):
             result[index] = cleaned
     return result
 

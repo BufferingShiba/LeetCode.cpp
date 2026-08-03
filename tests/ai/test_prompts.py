@@ -23,6 +23,7 @@ class TestSystemPromptBuilder(unittest.TestCase):
         self.assertIn("`<gtest/gtest.h>`", prompt)
         self.assertIn("constructTree` 有多个重载", prompt)
         self.assertIn("constructTree({1, 2, 3})", prompt)
+        self.assertIn("`levelOrderTraversal` 和 `levelOrder` 返回紧凑结果", prompt)
         self.assertIn("设计类题直接实现题目类，不使用 SolutionBase；但测试仍必须使用 `TEST_P`", prompt)
 
     def test_standard_prompt_adds_medium_hard_guidance(self) -> None:
