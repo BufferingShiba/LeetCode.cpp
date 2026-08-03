@@ -30,6 +30,11 @@ TEST_P(TotalCostToHireKWorkersTest, OfficialExample2) {
   EXPECT_EQ(4, result);
 }
 
+TEST_P(TotalCostToHireKWorkersTest, HireEveryoneAfterOneHeapEmpties) {
+  vector<int> costs = {57, 33, 26, 76, 14, 67, 24, 90, 72, 37, 30};
+  EXPECT_EQ(526, solution.totalCost(costs, 11, 2));
+}
+
 
 INSTANTIATE_TEST_SUITE_P(
     LeetCode, TotalCostToHireKWorkersTest,

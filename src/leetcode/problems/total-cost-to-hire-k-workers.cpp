@@ -36,24 +36,40 @@ static long long solution1(vector<int>& costs, int k, int candidates) {
   for (int i = 0; i < candidates; ++i) right.emplace(costs[r], r), --r;
 
   long long total = 0;
+  auto takeLeft = [&]() {
+    total += left.top().first;
+    left.pop();
+    if (l <= r) left.emplace(costs[l], l), ++l;
+  };
+  auto takeRight = [&]() {
+    total += right.top().first;
+    right.pop();
+    if (l <= r) right.emplace(costs[r], r), --r;
+  };
+
   for (int step = 0; step < k; ++step) {
+    // Once all unseen workers have entered the windows, one heap can become
+    // empty before the other (for example when k == n).
+    if (left.empty()) {
+      takeRight();
+      continue;
+    }
+    if (right.empty()) {
+      takeLeft();
+      continue;
+    }
+
     auto le = left.top();
     auto re = right.top();
     if (le.first != re.first) {
       if (le.first < re.first) {
-        total += le.first;
-        left.pop();
-        if (l <= r) left.emplace(costs[l], l), ++l;
+        takeLeft();
       } else {
-        total += re.first;
-        right.pop();
-        if (l <= r) right.emplace(costs[r], r), --r;
+        takeRight();
       }
     } else {
       // Tie: choose the worker with the smallest index (left side).
-      total += le.first;
-      left.pop();
-      if (l <= r) left.emplace(costs[l], l), ++l;
+      takeLeft();
     }
   }
   return total;
