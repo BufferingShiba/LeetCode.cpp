@@ -81,6 +81,10 @@ STANDARD_SOLVER_PROMPT = """Medium/Hard 标准路径：
 SCAFFOLD_SOLVER_PROMPT = """Scaffold 模式补充：
 - 已有三文件骨架，不要重建 namespace、类、fixture 或注册结构。
 - 只改 source/test 中必要部分，保留 SolutionBase、getSolution、INSTANTIATE_TEST_SUITE_P。
+- 首次完成实现时，create_or_update_file 必须提交已经写入真实算法的 source；如果同步修改
+  test，files 中也必须带上 source，不能只提交测试文件。
+- 调用工具前检查 source：不得残留 `/* Code here */`、默认 `return <type>();` 或 `solve()` 占位；
+  source 的 solution1 和公开转发方法都要与 test 一起形成可运行闭环。
 """
 
 
