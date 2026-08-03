@@ -1,7 +1,10 @@
 import json
 import unittest
 
-from script.leetcode.ai.scaffold import _has_intact_parameterized_registration
+from script.leetcode.ai.scaffold import (
+    _has_intact_parameterized_registration,
+    _insert_stubs_before_registration,
+)
 from script.leetcode.ai.tools.example_translator import _parse_llm_output
 
 
@@ -30,6 +33,26 @@ INSTANTIATE_TEST_SUITE_P(
         self.assertFalse(
             _has_intact_parameterized_registration(valid.replace("::testing", "::te"))
         )
+
+    def test_stub_insertion_relocates_registration_after_placeholder_removal(self) -> None:
+        content = """
+TEST_P(FooTest, Example1) {
+  /*Add Test Body here */
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    LeetCode, FooTest,
+    ::testing::ValuesIn(FooSolution().getStrategyNames()));
+"""
+        content = content.replace(
+            "TEST_P(FooTest, Example1) {\n  /*Add Test Body here */\n}\n\n", ""
+        )
+
+        updated = _insert_stubs_before_registration(content, "// official stub")
+
+        self.assertIsNotNone(updated)
+        self.assertLess(updated.index("// official stub"), updated.index("INSTANTIATE_TEST_SUITE_P"))
+        self.assertTrue(_has_intact_parameterized_registration(updated))
 
 
 if __name__ == "__main__":

@@ -208,12 +208,6 @@ class ScaffoldManager:
             log_with_time(f"⚠️ 读取 scaffold test 文件失败，跳过 example 注入: {e}", ColorCode.YELLOW)
             return
 
-        marker_match = re.search(r"(?m)^INSTANTIATE_TEST_SUITE_P\(", content)
-        if marker_match is None:
-            log_with_time("⚠️ scaffold test 文件里没找到 INSTANTIATE_TEST_SUITE_P，跳过 example 注入", ColorCode.YELLOW)
-            return
-        insert_at = marker_match.start()
-
         class_base = FileGenerator(problem_info).solution_class_name
         if not _has_intact_parameterized_registration(content):
             log_with_time("⚠️ scaffold 测试注册宏不完整，跳过 example 注入以保留可修复骨架", ColorCode.YELLOW)
@@ -234,7 +228,12 @@ class ScaffoldManager:
             _render_stub(class_base, ex, body=translations.get(ex["index"]))
             for ex in official
         )
-        new_content = content[:insert_at] + stubs + "\n\n" + content[insert_at:]
+        # 占位 TEST_P 被删除后，注册宏的偏移会变化；必须在最后一次
+        # content 改写后重新定位，不能复用旧的字符下标。
+        new_content = _insert_stubs_before_registration(content, stubs)
+        if new_content is None:
+            log_with_time("⚠️ scaffold test 文件里没找到 INSTANTIATE_TEST_SUITE_P，跳过 example 注入", ColorCode.YELLOW)
+            return
         if not _has_intact_parameterized_registration(new_content):
             log_with_time("⚠️ example 注入后测试注册宏校验失败，保留原 scaffold 文件", ColorCode.YELLOW)
             return
@@ -288,6 +287,15 @@ def _has_intact_parameterized_registration(content: str) -> bool:
         r"[^;]+\.getStrategyNames\(\)\s*\)\s*\);"
     )
     return re.search(pattern, content, flags=re.DOTALL) is not None
+
+
+def _insert_stubs_before_registration(content: str, stubs: str) -> Optional[str]:
+    """在最终 test 内容中重新定位注册宏并插入官方 examples。"""
+    marker_match = re.search(r"(?m)^INSTANTIATE_TEST_SUITE_P\(", content)
+    if marker_match is None:
+        return None
+    insert_at = marker_match.start()
+    return content[:insert_at] + stubs + "\n\n" + content[insert_at:]
 
 
 def _render_stub(class_base: str, example: Dict[str, Any], body: Optional[str] = None) -> str:
