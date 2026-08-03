@@ -26,9 +26,9 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::ValuesIn(FooSolution().getStrategyNames()));
 """
 
-        self.assertTrue(_has_intact_parameterized_registration(valid, "Foo"))
+        self.assertTrue(_has_intact_parameterized_registration(valid))
         self.assertFalse(
-            _has_intact_parameterized_registration(valid.replace("::testing", "::te"), "Foo")
+            _has_intact_parameterized_registration(valid.replace("::testing", "::te"))
         )
 
 

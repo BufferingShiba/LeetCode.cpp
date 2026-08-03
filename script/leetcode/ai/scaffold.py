@@ -215,7 +215,7 @@ class ScaffoldManager:
         insert_at = marker_match.start()
 
         class_base = FileGenerator(problem_info).solution_class_name
-        if not _has_intact_parameterized_registration(content, class_base):
+        if not _has_intact_parameterized_registration(content):
             log_with_time("⚠️ scaffold 测试注册宏不完整，跳过 example 注入以保留可修复骨架", ColorCode.YELLOW)
             return
         translations = self._translate(problem_data, class_base, official)
@@ -235,7 +235,7 @@ class ScaffoldManager:
             for ex in official
         )
         new_content = content[:insert_at] + stubs + "\n\n" + content[insert_at:]
-        if not _has_intact_parameterized_registration(new_content, class_base):
+        if not _has_intact_parameterized_registration(new_content):
             log_with_time("⚠️ example 注入后测试注册宏校验失败，保留原 scaffold 文件", ColorCode.YELLOW)
             return
         test_path.write_text(new_content, encoding="utf-8")
@@ -280,13 +280,12 @@ def _read_file(path: Path) -> str:
         return f"<读取失败: {e}>"
 
 
-def _has_intact_parameterized_registration(content: str, class_base: str) -> bool:
+def _has_intact_parameterized_registration(content: str) -> bool:
     """确认官方 examples 注入不会破坏 TEST_P 的策略注册宏。"""
-    escaped = re.escape(class_base)
     pattern = (
-        rf"INSTANTIATE_TEST_SUITE_P\(\s*"
-        rf"LeetCode\s*,\s*{escaped}Test\s*,\s*"
-        rf"::testing::ValuesIn\(\s*{escaped}Solution\(\)\.getStrategyNames\(\)\s*\)\s*\);"
+        r"INSTANTIATE_TEST_SUITE_P\(\s*LeetCode\s*,\s*"
+        r"[^,]+\s*,\s*::testing::ValuesIn\(\s*"
+        r"[^;]+\.getStrategyNames\(\)\s*\)\s*\);"
     )
     return re.search(pattern, content, flags=re.DOTALL) is not None
 
