@@ -27,8 +27,13 @@ static int solution1(string s) {
   std::vector<std::vector<char>> pal(n, std::vector<char>(n, 0));
   std::vector<std::vector<char>> one(n, std::vector<char>(n, 0));
 
-  // Base: empty / single-char intervals are pure palindromes.
-  for (int i = 0; i < n; ++i) pal[i][i] = 1;
+  // Base: empty / single-char intervals are pure palindromes.  Removing the
+  // only character leaves the empty palindrome, so a single-char interval is
+  // also a valid exactly-one-removal interval.
+  for (int i = 0; i < n; ++i) {
+    pal[i][i] = 1;
+    one[i][i] = 1;
+  }
   // pal[l][r] for l>r is by definition true (empty interval),
   // handled implicitly below.
 

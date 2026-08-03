@@ -33,6 +33,10 @@ TEST_P(LongestAlmostPalindromicSubstringTest, OfficialExample3) {
   EXPECT_EQ(5, solution.almostPalindromic("zzabba"));
 }
 
+TEST_P(LongestAlmostPalindromicSubstringTest, RemoveCenterCharacter) {
+  EXPECT_EQ(3, solution.almostPalindromic("aba"));
+}
+
 
 INSTANTIATE_TEST_SUITE_P(
     LeetCode, LongestAlmostPalindromicSubstringTest,
