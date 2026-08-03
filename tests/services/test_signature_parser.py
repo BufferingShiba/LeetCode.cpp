@@ -19,6 +19,38 @@ public:
         signature = SignatureParser.extract_from_code_template(template)
         self.assertEqual(signature, "int add(int a, int b)")
 
+    def test_extract_nested_return_type(self) -> None:
+        template = """
+/*
+class Node {
+public:
+    vector<Node*> children;
+};
+*/
+class Solution {
+public:
+    vector<vector<int>> levelOrder(Node* root) {
+    }
+};
+"""
+        signature = SignatureParser.extract_from_code_template(template)
+        self.assertEqual(signature, "vector<vector<int>> levelOrder(Node* root)")
+
+    def test_extract_multiline_nested_signature(self) -> None:
+        template = """
+class Solution {
+public:
+    vector<vector<int>> diagonalSort(
+        vector<vector<int>>& mat) {
+    }
+};
+"""
+        signature = SignatureParser.extract_from_code_template(template)
+        self.assertEqual(
+            signature,
+            "vector<vector<int>> diagonalSort(vector<vector<int>>& mat)",
+        )
+
     def test_parse_nested_template_params(self) -> None:
         signature = "vector<int> solve(map<int, vector<string>> mp, int k)"
         parsed = SignatureParser.parse(signature)
