@@ -1,41 +1,45 @@
-#include <gtest/gtest.h>
-
-#include <string>
-#include <vector>
-
 #include "leetcode/problems/concatenate-non-zero-digits-and-multiply-by-sum-i.h"
 
-namespace leetcode::problem_3754 {
+#include "gtest/gtest.h"
 
-class ConcatenateNonZeroDigitsAndMultiplyBySumITest
-    : public ::testing::TestWithParam<std::string> {
+namespace leetcode {
+namespace problem_3754 {
+
+class ConcatenateNonZeroDigitsAndMultiplyBySumITest : public ::testing::TestWithParam<std::string> {
  protected:
-  ConcatenateNonZeroDigitsAndMultiplyBySumISolution solution;
-
   void SetUp() override { solution.setStrategy(GetParam()); }
+
+  ConcatenateNonZeroDigitsAndMultiplyBySumISolution solution;
 };
 
 TEST_P(ConcatenateNonZeroDigitsAndMultiplyBySumITest, Example1) {
-  EXPECT_EQ(solution.sumAndMultiply(10203004), 12340LL);
+  int n = 10203004;
+  long long expected = 12340;
+  EXPECT_EQ(expected, solution.sumAndMultiply(n));
 }
 
 TEST_P(ConcatenateNonZeroDigitsAndMultiplyBySumITest, Example2) {
-  EXPECT_EQ(solution.sumAndMultiply(1000), 1LL);
+  int n = 1000;
+  long long expected = 1;
+  EXPECT_EQ(expected, solution.sumAndMultiply(n));
 }
 
-TEST_P(ConcatenateNonZeroDigitsAndMultiplyBySumITest, AllZeroDigits) {
-  EXPECT_EQ(solution.sumAndMultiply(0), 0LL);
+TEST_P(ConcatenateNonZeroDigitsAndMultiplyBySumITest, SelfAuthoredAllZeros) {
+  int n = 0;
+  long long expected = 0;
+  EXPECT_EQ(expected, solution.sumAndMultiply(n));
 }
 
-TEST_P(ConcatenateNonZeroDigitsAndMultiplyBySumITest, NoZeroDigits) {
-  EXPECT_EQ(solution.sumAndMultiply(12345), 12345LL * 15LL);
+TEST_P(ConcatenateNonZeroDigitsAndMultiplyBySumITest, SelfAuthoredAllNonZero) {
+  int n = 123;
+  // x = 123, sum = 6, result = 738
+  long long expected = 738;
+  EXPECT_EQ(expected, solution.sumAndMultiply(n));
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    ConcatenateNonZeroDigitsAndMultiplyBySumITest,
-    ConcatenateNonZeroDigitsAndMultiplyBySumITest,
-    ::testing::ValuesIn(
-        ConcatenateNonZeroDigitsAndMultiplyBySumISolution()
-            .getStrategyNames()));
+    LeetCode, ConcatenateNonZeroDigitsAndMultiplyBySumITest,
+    ::testing::ValuesIn(ConcatenateNonZeroDigitsAndMultiplyBySumISolution().getStrategyNames()));
 
-}  // namespace leetcode::problem_3754
+}  // namespace problem_3754
+}  // namespace leetcode

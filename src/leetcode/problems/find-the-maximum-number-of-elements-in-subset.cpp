@@ -1,5 +1,6 @@
 #include "leetcode/problems/find-the-maximum-number-of-elements-in-subset.h"
 
+#include <algorithm>
 #include <unordered_map>
 
 namespace leetcode {
@@ -50,7 +51,7 @@ FindTheMaximumNumberOfElementsInSubsetSolution::FindTheMaximumNumberOfElementsIn
       .title = "Find the Maximum Number of Elements in Subset",
       .url = "https://leetcode.com/problems/find-the-maximum-number-of-elements-in-subset"
   });
-  registerStrategy({.name = "Brute Force",
+  registerStrategy({.name = "Hash Map + Power Chain",
                     .expected = "Accepted",
                     .time_complexity = "O(n + log(max))",
                     .space_complexity = "O(n)",

@@ -40,7 +40,7 @@ MaximumTwinSumOfALinkedListSolution::MaximumTwinSumOfALinkedListSolution() {
       .title = "Maximum Twin Sum of a Linked List",
       .url = "https://leetcode.com/problems/maximum-twin-sum-of-a-linked-list"
   });
-  registerStrategy({.name = "Brute Force", .expected = "Accepted",
+  registerStrategy({.name = "Reverse Second Half", .expected = "Accepted",
                     .time_complexity = "O(n)", .space_complexity = "O(1)",
                     .tags = {"Linked List", "Two Pointers"}},
                    solution1);

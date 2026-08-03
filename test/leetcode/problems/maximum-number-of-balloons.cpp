@@ -1,34 +1,37 @@
-#include <gtest/gtest.h>
-
-#include <string>
-#include <vector>
-
 #include "leetcode/problems/maximum-number-of-balloons.h"
 
-namespace leetcode::problem_1189 {
+#include "gtest/gtest.h"
 
-class MaximumNumberOfBalloonsTest
-    : public ::testing::TestWithParam<std::string> {
+namespace leetcode {
+namespace problem_1189 {
+
+class MaximumNumberOfBalloonsTest : public ::testing::TestWithParam<std::string> {
  protected:
-  void SetUp() override { solution_.setStrategy(GetParam()); }
-
-  MaximumNumberOfBalloonsSolution solution_;
+  void SetUp() override { solution.setStrategy(GetParam()); }
+  MaximumNumberOfBalloonsSolution solution;
 };
 
 TEST_P(MaximumNumberOfBalloonsTest, Example1) {
-  EXPECT_EQ(solution_.maxNumberOfBalloons("nlaebolko"), 1);
+  std::string text = "nlaebolko";
+  int expected = 1;
+  EXPECT_EQ(expected, solution.maxNumberOfBalloons(text));
 }
 
 TEST_P(MaximumNumberOfBalloonsTest, Example2) {
-  EXPECT_EQ(solution_.maxNumberOfBalloons("loonbalxballpoon"), 2);
+  std::string text = "loonbalxballpoon";
+  int expected = 2;
+  EXPECT_EQ(expected, solution.maxNumberOfBalloons(text));
 }
 
 TEST_P(MaximumNumberOfBalloonsTest, Example3) {
-  EXPECT_EQ(solution_.maxNumberOfBalloons("leetcode"), 0);
+  std::string text = "leetcode";
+  int expected = 0;
+  EXPECT_EQ(expected, solution.maxNumberOfBalloons(text));
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    MaximumNumberOfBalloonsTestSuite, MaximumNumberOfBalloonsTest,
+    LeetCode, MaximumNumberOfBalloonsTest,
     ::testing::ValuesIn(MaximumNumberOfBalloonsSolution().getStrategyNames()));
 
-}  // namespace leetcode::problem_1189
+}  // namespace problem_1189
+}  // namespace leetcode

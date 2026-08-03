@@ -5,41 +5,37 @@
 namespace leetcode {
 namespace problem_2130 {
 
-class MaximumTwinSumOfALinkedListTest : public ::testing::TestWithParam<string> {
+class MaximumTwinSumOfALinkedListTest : public ::testing::TestWithParam<std::string> {
  protected:
   void SetUp() override { solution.setStrategy(GetParam()); }
 
   MaximumTwinSumOfALinkedListSolution solution;
 };
 
-// ===== Official Example 1 (from LeetCode) =====
-// Input:  head = [5,4,2,1]
-// Output: 6
-TEST_P(MaximumTwinSumOfALinkedListTest, OfficialExample1) {
-  ListNode* head = leetcode::constructLinkedList({5, 4, 2, 1});
-  int expected = 6;
-  int actual = solution.pairSum(head);
-  EXPECT_EQ(expected, actual);
+TEST_P(MaximumTwinSumOfALinkedListTest, Example1) {
+  ListNode* head = constructLinkedList({5, 4, 2, 1});
+  EXPECT_EQ(solution.pairSum(head), 6);
 }
 
-// ===== Official Example 2 (from LeetCode) =====
-// Input:  head = [4,2,2,3]
-// Output: 7
-TEST_P(MaximumTwinSumOfALinkedListTest, OfficialExample2) {
-  ListNode* head = leetcode::constructLinkedList({4, 2, 2, 3});
-  int expected = 7;
-  int actual = solution.pairSum(head);
-  EXPECT_EQ(expected, actual);
+TEST_P(MaximumTwinSumOfALinkedListTest, Example2) {
+  ListNode* head = constructLinkedList({4, 2, 2, 3});
+  EXPECT_EQ(solution.pairSum(head), 7);
 }
 
-// ===== Official Example 3 (from LeetCode) =====
-// Input:  head = [1,100000]
-// Output: 100001
-TEST_P(MaximumTwinSumOfALinkedListTest, OfficialExample3) {
-  ListNode* head = leetcode::constructLinkedList({1, 100000});
-  int expected = 100001;
-  int actual = solution.pairSum(head);
-  EXPECT_EQ(expected, actual);
+TEST_P(MaximumTwinSumOfALinkedListTest, Example3) {
+  ListNode* head = constructLinkedList({1, 100000});
+  EXPECT_EQ(solution.pairSum(head), 100001);
+}
+
+TEST_P(MaximumTwinSumOfALinkedListTest, SelfAuthoredAllSameValues) {
+  ListNode* head = constructLinkedList({7, 7, 7, 7});
+  EXPECT_EQ(solution.pairSum(head), 14);
+}
+
+TEST_P(MaximumTwinSumOfALinkedListTest, SelfAuthoredIncreasingValues) {
+  ListNode* head = constructLinkedList({1, 2, 3, 4, 5, 6});
+  // pairs: (1,6)=7, (2,5)=7, (3,4)=7 -> max=7
+  EXPECT_EQ(solution.pairSum(head), 7);
 }
 
 INSTANTIATE_TEST_SUITE_P(
