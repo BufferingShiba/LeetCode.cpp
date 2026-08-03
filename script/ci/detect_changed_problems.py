@@ -37,7 +37,15 @@ def get_all_files_in_commit() -> list:
     """Get all files in current commit (for CI push events)"""
     try:
         result = subprocess.run(
-            ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+            [
+                "git",
+                "diff-tree",
+                "--no-commit-id",
+                "--name-only",
+                "-r",
+                "-m",
+                "HEAD",
+            ],
             capture_output=True,
             text=True,
             check=True,

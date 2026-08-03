@@ -13,6 +13,11 @@ on:
       - 'requirements.txt'
       - 'justfile'
       - 'pyproject.toml'
+  # Keep the expensive full sweep out of every ordinary push.  The monthly
+  # run below is the repository-wide integration safety net.
+  schedule:
+    - cron: '0 2 1 * *'
+  workflow_dispatch:
   pull_request:
     branches: [main, master, develop]
     paths:
@@ -35,6 +40,8 @@ jobs:
   python-tests:
     name: Python Unit Tests
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.python_changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -69,6 +76,8 @@ jobs:
     outputs:
       problems: ${{ steps.detect.outputs.problems }}
       problem_count: ${{ steps.detect.outputs.problem_count }}
+      core_changed: ${{ steps.detect.outputs.core_changed }}
+      python_changed: ${{ steps.detect.outputs.python_changed }}
       is_full_build: ${{ steps.strategy.outputs.is_full_build }}
       build_type: ${{ steps.strategy.outputs.build_type }}
 
@@ -89,42 +98,59 @@ jobs:
           
           echo "problems=$CHANGED_PROBLEMS" >> $GITHUB_OUTPUT
           echo "problem_count=$PROBLEM_COUNT" >> $GITHUB_OUTPUT
+
+          # On a direct push to the default branch origin/main may already
+          # point at HEAD, so fall back to the files in the pushed commit.
+          CHANGED_FILES=$(git diff --name-only origin/main HEAD || true)
+          if [ -z "$CHANGED_FILES" ]; then
+            CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r -m HEAD || true)
+          fi
+
+          if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(CMakeLists\.txt|include/leetcode/(core|solution)\.(h|hpp)|include/leetcode/utils/|src/leetcode/utils/)'; then
+            echo "core_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "core_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(script/|tests/|requirements\.txt$|pyproject\.toml$)'; then
+            echo "python_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "python_changed=false" >> $GITHUB_OUTPUT
+          fi
+
           echo "Detected $PROBLEM_COUNT changed problem(s)"
 
       - name: Determine build strategy
         id: strategy
         run: |
-          IS_PR="${{ github.event_name == 'pull_request' }}"
+          EVENT_NAME="${{ github.event_name }}"
           PROBLEM_COUNT="${{ steps.detect.outputs.problem_count }}"
+          CORE_CHANGED="${{ steps.detect.outputs.core_changed }}"
           
-          if [ "$IS_PR" == "true" ]; then
-            # PR: Use incremental build if <= 10 problems
-            if [ "$PROBLEM_COUNT" -gt 10 ]; then
-              echo "is_full_build=true" >> $GITHUB_OUTPUT
-              echo "build_type=full" >> $GITHUB_OUTPUT
-              echo "PR with many changes ($PROBLEM_COUNT), using full build"
-            elif [ "$PROBLEM_COUNT" -eq 0 ]; then
-              # Check if core files changed
-              CORE_CHANGES=$(git diff --name-only origin/main HEAD | grep -E "(CMakeLists\.txt|include/leetcode/(core|solution)\.h|src/leetcode/utils/)" || true)
-              if [ -n "$CORE_CHANGES" ]; then
-                echo "is_full_build=true" >> $GITHUB_OUTPUT
-                echo "build_type=full" >> $GITHUB_OUTPUT
-                echo "Core files changed, using full build"
-              else
-                echo "is_full_build=false" >> $GITHUB_OUTPUT
-                echo "build_type=skip" >> $GITHUB_OUTPUT
-                echo "No relevant changes, skipping build"
-              fi
-            else
-              echo "is_full_build=false" >> $GITHUB_OUTPUT
-              echo "build_type=incremental" >> $GITHUB_OUTPUT
-              echo "PR with $PROBLEM_COUNT problem(s), using incremental build"
-            fi
-          else
-            # Push to main: Always full build
+          if [ "$EVENT_NAME" == "schedule" ] || [ "$EVENT_NAME" == "workflow_dispatch" ]; then
             echo "is_full_build=true" >> $GITHUB_OUTPUT
             echo "build_type=full" >> $GITHUB_OUTPUT
-            echo "Push to main, using full build"
+            echo "Scheduled/manual repository-wide audit"
+          elif [ "$CORE_CHANGED" == "true" ]; then
+            echo "is_full_build=true" >> $GITHUB_OUTPUT
+            echo "build_type=full" >> $GITHUB_OUTPUT
+            echo "Core build files changed, using full build"
+          elif [ "$PROBLEM_COUNT" -gt 50 ]; then
+            # A very large batch is still unusual; keep a full-build fallback
+            # while ordinary generated batches use the cheaper multi target.
+            if [ "$EVENT_NAME" == "pull_request" ] || [ "$EVENT_NAME" == "push" ]; then
+              echo "is_full_build=true" >> $GITHUB_OUTPUT
+              echo "build_type=full" >> $GITHUB_OUTPUT
+              echo "Large batch ($PROBLEM_COUNT problems), using full build"
+            fi
+          elif [ "$PROBLEM_COUNT" -gt 0 ]; then
+            echo "is_full_build=false" >> $GITHUB_OUTPUT
+            echo "build_type=incremental" >> $GITHUB_OUTPUT
+            echo "Using incremental build for $PROBLEM_COUNT problem(s)"
+          else
+            echo "is_full_build=false" >> $GITHUB_OUTPUT
+            echo "build_type=skip" >> $GITHUB_OUTPUT
+            echo "No changed problems or core build files, skipping C++ build"
           fi
 
   build-incremental:
