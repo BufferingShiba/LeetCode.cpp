@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from script.leetcode.models import ProblemInfo
+from script.leetcode.models import DesignClassDefinition, DesignMethod, ProblemInfo
 from script.leetcode.services.file_generator import FileGenerator
 from script.leetcode.services.naming import class_name_from_slug
 from script.leetcode.services.template_renderer import TemplateRenderer
@@ -56,6 +56,23 @@ class TestTemplateRenderer(unittest.TestCase):
             class_name_from_slug("1-bit-and-2-bit-characters"),
             "Problem1BitAnd2BitCharacters",
         )
+
+    def test_design_template_uses_the_code_template_class_name(self) -> None:
+        design = DesignClassDefinition(
+            class_name="MyCalendarTwo",
+            class_body="",
+            methods=[
+                DesignMethod("", "MyCalendarTwo", "", True),
+                DesignMethod("bool", "book", "int startTime, int endTime", False),
+            ],
+        )
+        generator = FileGenerator(
+            ProblemInfo(731, "My Calendar II", "my-calendar-ii"),
+            is_design=True,
+            design_class_def=design,
+        )
+
+        self.assertEqual(generator._build_context()["solution_class_name"], "MyCalendarTwo")
         self.assertEqual(
             FileGenerator(
                 ProblemInfo(717, "1-bit and 2-bit Characters", "1-bit-and-2-bit-characters")

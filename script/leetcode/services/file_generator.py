@@ -57,6 +57,9 @@ class FileGenerator:
         
         if self.is_design:
             if self.design_class_def:
+                # 设计题的可提交类名来自 LeetCode C++ 模板，可能与 slug
+                # 推导名不同（例如 My Calendar II -> MyCalendarTwo）。
+                base_context["solution_class_name"] = self.design_class_def.class_name
                 base_context['method_declarations'] = DesignClassExtractor.format_method_declarations(
                     self.design_class_def
                 )
