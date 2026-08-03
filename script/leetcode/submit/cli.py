@@ -150,6 +150,11 @@ def _run_queue() -> bool:
                     f"🛡️ 已隔离题目 {problem_id} {hold_seconds / 60:.0f} 分钟，避免不确定结果导致重复提交",
                     ColorCode.YELLOW,
                 )
+                log_with_time(
+                    f"➡️ {reason}，跳过该题并继续处理其余队列",
+                    ColorCode.YELLOW,
+                )
+                continue
             log_with_time(f"⏸️ {reason}，保留剩余队列并停止", ColorCode.YELLOW)
             break
     return all_accepted

@@ -67,11 +67,12 @@ def is_rate_limited_result(result: object) -> bool:
 
 
 def should_pause_submission_queue(result: object) -> bool:
-    """Return whether a queue consumer should stop before the next request.
+    """Return whether a result needs queue-level handling before the next request.
 
-    Explicit throttling is handled by the shared exponential cooldown.  A
-    transport or polling failure is also a stop condition because the server
-    may have accepted the request even though the client cannot prove it.
+    Explicit throttling is handled by the shared exponential cooldown and
+    stops the consumer. A transport or polling failure is quarantined by the
+    CLI because the server may have accepted the request even though the
+    client cannot prove it; unrelated queue entries remain consumable.
     Deterministic verdicts such as Wrong Answer and Compile Error remain
     consumable so one bad solution does not stall unrelated queue entries.
     """
