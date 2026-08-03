@@ -19,45 +19,46 @@ namespace problem_3844 {
 //                || pal[l+1][r]                       // remove s[l]
 //                || pal[l][r-1]);                     // remove s[r]
 //
-// The answer is the maximum length of a substring with one[l][r] true.
+// The rows are evaluated from right to left, so both tables can be kept as
+// one-dimensional rolling rows. The answer is the maximum length of a
+// substring with one[l][r] true.
 static int solution1(string s) {
   const int n = static_cast<int>(s.size());
   if (n < 2) return 0;
 
-  std::vector<std::vector<char>> pal(n, std::vector<char>(n, 0));
-  std::vector<std::vector<char>> one(n, std::vector<char>(n, 0));
-
-  // Base: empty / single-char intervals are pure palindromes.  Removing the
-  // only character leaves the empty palindrome, so a single-char interval is
-  // also a valid exactly-one-removal interval.
-  for (int i = 0; i < n; ++i) {
-    pal[i][i] = 1;
-    one[i][i] = 1;
-  }
-  // pal[l][r] for l>r is by definition true (empty interval),
-  // handled implicitly below.
-
-  auto isPal = [&](int l, int r) -> bool {
-    // empty interval is a palindrome; single char too.
-    if (l >= r) return true;
-    return pal[l][r] != 0;
-  };
+  // pal[r] and one[r] hold the values for the row l+1 before column r is
+  // overwritten. The diagonal values pal[l+1][r-1] and one[l+1][r-1] are
+  // carried separately while scanning r from left to right.
+  std::vector<char> pal(n, 0);
+  std::vector<char> one(n, 0);
 
   int best = 0;
-  for (int len = 2; len <= n; ++len) {
-    for (int l = 0; l + len - 1 < n; ++l) {
-      const int r = l + len - 1;
-      // pure palindrome
-      if (s[l] == s[r] && isPal(l + 1, r - 1)) pal[l][r] = 1;
+  for (int l = n - 1; l >= 0; --l) {
+    // Single-character intervals: pure palindrome, and removing the lone
+    // character leaves the empty palindrome.
+    pal[l] = 1;
+    one[l] = 1;
 
-      // exactly-one-removal palindrome
-      char v = 0;
-      if (s[l] == s[r] && one[l + 1][r - 1]) v = 1;
-      if (isPal(l + 1, r)) v = 1;
-      if (isPal(l, r - 1)) v = 1;
-      one[l][r] = v;
+    char palDiagonal = 1;  // empty interval [l+1, l]
+    char oneDiagonal = 0;
+    char palLeft = 1;      // pal[l][l]
+    for (int r = l + 1; r < n; ++r) {
+      const char palBelow = pal[r];
+      const char oneBelow = one[r];
 
-      if (v && len > best) best = len;
+      const char currentPal = s[l] == s[r] && palDiagonal;
+      const char currentOne =
+          (s[l] == s[r] && oneDiagonal) || palBelow || palLeft;
+
+      pal[r] = currentPal;
+      one[r] = currentOne;
+      palDiagonal = palBelow;
+      oneDiagonal = oneBelow;
+      palLeft = currentPal;
+
+      if (currentOne && r - l + 1 > best) {
+        best = r - l + 1;
+      }
     }
   }
 
@@ -72,7 +73,7 @@ LongestAlmostPalindromicSubstringSolution::LongestAlmostPalindromicSubstringSolu
   });
   registerStrategy({.name = "DP (O(n^2))",
                     .time_complexity = "O(n^2)",
-                    .space_complexity = "O(n^2)",
+                    .space_complexity = "O(n)",
                     .tags = {"Dynamic Programming", "Two Pointers"}},
                    solution1);
 }
