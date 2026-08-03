@@ -175,6 +175,8 @@ def _build_prompt(problem_data: ProblemData, header_code: Optional[str], source_
 6. 只输出最终代码，不要有其他说明文字
 7. 官方 C++ 接口模板中的方法名、返回类型、参数类型和参数顺序是线上评测的唯一权威；
    必须逐字保持，尤其不要把单数/复数方法名互相改写。
+8. 如果辅助函数被放入 `Solution` 类并在 lambda 中调用，lambda 必须使用 `[this]` 或
+   `[&]` 捕获，或者将辅助函数声明为 `static`；禁止用 `[]` 调用非静态成员函数。
 
 【LeetCode 格式示例】
 ```cpp
